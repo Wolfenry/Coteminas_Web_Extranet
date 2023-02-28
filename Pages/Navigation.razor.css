@@ -1,0 +1,18 @@
+﻿p {
+    margin-top: 14px !important;
+    font-size: 17px;
+    line-height: 1.7;
+    color: #000000;
+    margin: 0px;
+}
+
+.card:hover {
+    background-color: #e6e6e6;
+    cursor: pointer;
+}
+
+footer {
+    position: fixed;
+    bottom: 0;
+    width: 100%;
+}

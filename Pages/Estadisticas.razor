@@ -1,0 +1,706 @@
+﻿@page "/estadisticas"
+@using Blazorise.Charts;
+@inject DbAccess dbaccess
+
+<div class="mt-2 mx-2">
+    <div class="d-flex align-items-center mb-2 mr-1 justify-content-between">
+
+        <div class="d-flex">
+            <div>
+                <img src="../img/chart.svg" style="height:40px;padding-left:10px;" />
+            </div>
+            <div>
+                <h3 class="ml-3 mb-0">Estadisticas</h3>
+                <span class="ml-3">Tomadas por Fecha Diferimento</span>
+            </div>
+        </div>
+
+        <div class="d-flex mt-2">
+
+            <div class="mr-2">
+                Desde:
+            </div>
+            <DateEdit TValue="DateTime" Class="text-center" @bind-Date="desde" />
+
+            <div class="mx-2">
+                Hasta:
+            </div>
+            <DateEdit TValue="DateTime" Class="text-center" @bind-Date="hasta" />
+
+            <Button Class="btn btn-primary ml-3" Clicked="(async () => { await CalcularEstadisticas(); await LoadStats();})">Actualizar</Button>
+        </div>
+
+        <div class="d-flex align-items-center mt-2">
+            <span class="mr-2">Estado:</span>
+            <Dropdown>
+                <DropdownToggle Class="btn-primary">@(estadosSelected == "" ? "TODOS" : estadosSelected)</DropdownToggle>
+                <DropdownMenu Style="right:0;left:auto;">
+                    <DropdownItem Clicked="@(async () => { estadosSelected = "TODOS"; await CalcularEstadisticas(); })">TODOS</DropdownItem>
+                    @foreach (var item in estados)
+                    {
+                        <DropdownItem Clicked="@(async () => { estadosSelected = item; await CalcularEstadisticas(); })">@item</DropdownItem>
+                    }
+                </DropdownMenu>
+            </Dropdown>
+        </div>
+    </div>
+
+    <Row>
+        <Column ColumnSize="ColumnSize.IsThird.OnWidescreen">
+            <Card Margin="Margin.Is4.OnY">
+                <CardHeader Class="pt-2 pb-0">
+                    <CardTitle Class="d-flex">
+                        <span>Remitos según entrega</span>
+                        <Dropdown>
+                            <DropdownToggle Class="p-0 ml-3 btn btn-outline-primary">
+                                @(locentermino == "" ? "LOCALIDADES" : locentermino)
+                            </DropdownToggle>
+                            <DropdownMenu>
+                                <DropdownItem Clicked="@(async () => { locentermino = "TODAS"; await CalcularEnTermino(locentermino, desde, hasta); await HandleRedraw(pieChart, GetPieChartDataset, EnTermino); })">TODAS</DropdownItem>
+                                @foreach (var item in localidades)
+                                {
+                                    <DropdownItem Clicked="@(async () => { locentermino = item; await CalcularEnTermino(item, desde, hasta); await HandleRedraw(pieChart, GetPieChartDataset, EnTermino); })">@item</DropdownItem>
+                                }
+                            </DropdownMenu>
+                        </Dropdown>
+                    </CardTitle>
+                </CardHeader>
+                <div class="cargastat @(statsloaded ? "ok" : "")">
+                    <CardBody>
+                        <Chart @ref="pieChart" Type="ChartType.Pie" TItem="double" />
+
+                        <Label Class="d-flex justify-content-center ml-5 position-absolute">TOTALES: @totalentermino</Label>
+
+                    </CardBody>
+                </div>
+            </Card>
+        </Column>
+
+        <Column ColumnSize="ColumnSize.IsThird.OnWidescreen">
+            <Card Margin="Margin.Is4.OnY">
+                <CardHeader>
+                    <CardTitle>Disponibles para ruteo</CardTitle>
+                </CardHeader>
+                <div class="cargastat @(statsloaded ? "ok" : "")">
+
+                    <CardBody>
+                        <Chart @ref="barChart" Type="ChartType.Bar" TItem="double" />
+                    </CardBody>
+                </div>
+            </Card>
+        </Column>
+
+        <Column ColumnSize="ColumnSize.IsThird.OnWidescreen">
+            <Card Margin="Margin.Is4.OnY">
+                <CardHeader>
+                    <CardTitle>Remitos Digitalizados (Observaciones)</CardTitle>
+                </CardHeader>
+                <div class="cargastat @(statsloaded ? "ok" : "")">
+
+                    <CardBody>
+                        <Chart @ref="doughnutChart" Type="ChartType.Doughnut" TItem="double" />
+                    </CardBody>
+                </div>
+            </Card>
+        </Column>
+
+    </Row>
+    <Row>
+        <Column>
+            <Card Margin="Margin.Is4.FromBottom">
+                <CardHeader>
+                    <CardTitle>Cantidad de entregados</CardTitle>
+                </CardHeader>
+                <div class="cargastat @(statsloaded ? "ok" : "")">
+
+                    <CardBody>
+                        <LineChart @ref="lineChartWithData" TItem="double" />
+                    </CardBody>
+                </div>
+            </Card>
+        </Column>
+    </Row>
+</div>
+@code{
+
+    string user = "";
+
+    List<Stats> stats = new();
+
+    Chart<double> barChart;
+    Chart<double> pieChart;
+    Chart<double> doughnutChart;
+    Chart<double> polarAreaChart;
+    Chart<double> radarChart;
+    bool vendedor = false;
+    List<double> entermino = new();
+    List<double> entregados = new();
+    List<double> ruteo = new();
+    List<double> observaciones = new();
+
+    bool statsloaded = false;
+    bool firstclear = false;
+
+    double totalentermino = 0;
+    double totalruteo = 0;
+
+    DateTime desde = new DateTime(DateTime.Now.Year, DateTime.Now.Month, 1);
+    DateTime hasta = DateTime.Today;
+
+    List<string> localidades = new();
+    string locentermino = "";
+    string estadosSelected = "TODOS";
+    List<string> estados = new List<string> { "ENTREGADO", "NO ENTREGADO", "ENTREGADO EXPRESO", "ANULADO", "PREPARADO", "HABILITADO", "EN PREPARACION", "ENTREGADO PARCIAL", "EN VIAJE" };
+
+    LineChart<double> lineChartWithData;
+
+    string[] EnTermino = { "Tarde", "Antes", "A Tiempo" };
+    string[] Ruteo = { "Bloqueo Comercial", "Bloqueo Logistico", "Disp. Ruteo", "Totales" };
+    //string[] Entregados = { "BA","CA","CBA","CF","CHA","CHU","CTE","ER","FOR","JU","LA","LP","MS","MZA","NQ","RN","SC","SF","SGO","SJ","SL","ST","TF","TU" };
+    string[] OBS = { "SI", "NO" };
+
+    List<string> backgroundColors = new List<string> { ChartColor.FromRgba(255, 99, 132, 0.2f), ChartColor.FromRgba(54, 162, 235, 0.2f), ChartColor.FromRgba(255, 206, 86, 0.2f), ChartColor.FromRgba(73, 191, 114, 0.2f), ChartColor.FromRgba(153, 102, 255, 0.2f), ChartColor.FromRgba(255, 159, 64, 0.2f) };
+    List<string> borderColors = new List<string> { ChartColor.FromRgba(255, 99, 132, 1f), ChartColor.FromRgba(54, 162, 235, 1f), ChartColor.FromRgba(255, 206, 86, 1f), ChartColor.FromRgba(73, 191, 114, 1f), ChartColor.FromRgba(153, 102, 255, 1f), ChartColor.FromRgba(255, 159, 64, 1f) };
+
+    bool isAlreadyInitialised;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!isAlreadyInitialised)
+        {
+            isAlreadyInitialised = true;
+            await ValidarUsuario();
+            await LoadStats();
+
+            await CalcularEstadisticas();
+
+            //await CalcularEnTermino(locentermino, desde, hasta);
+
+            //await CalcularEntregados(desde, hasta);
+
+            //await CalcularDisponiblesRuteo(desde, hasta);
+
+            //await CalcularObservaciones(desde, hasta);
+
+        }
+    }
+
+    async Task CalcularEstadisticas()
+    {
+        await Task.WhenAll(
+        CalcularEnTermino(locentermino, desde, hasta),
+
+        CalcularEntregados(desde, hasta),
+
+        CalcularDisponiblesRuteo(desde, hasta),
+
+        CalcularObservaciones(desde, hasta)
+    );
+
+    }
+
+
+    async Task HandleRedraw<TDataSet, TItem, TOptions, TModel>(Blazorise.Charts.BaseChart<TDataSet, TItem, TOptions, TModel> chart, Func<TDataSet> getDataSet, string[] L)
+    where TDataSet : ChartDataset<TItem>
+    where TOptions : ChartOptions
+    where TModel : ChartModel
+    {
+
+        await chart.Clear();
+        
+        firstclear = true;
+
+        await chart.AddLabelsDatasetsAndUpdate(L, getDataSet());
+    }
+
+    async Task SetDataAndUpdate<TDataSet, TItem, TOptions, TModel>(Blazorise.Charts.BaseChart<TDataSet, TItem, TOptions, TModel> chart, Func<List<TItem>> items)
+    where TDataSet : ChartDataset<TItem>
+    where TOptions : ChartOptions
+    where TModel : ChartModel
+    {
+        await chart.SetData(0, items());
+        await chart.Update();
+    }
+
+    PieChartDataset<double> GetPieChartDataset()
+    {
+        return new PieChartDataset<double>
+
+        {
+            Label = "Cantidad",
+            Data = entermino,
+            BackgroundColor = new List<string> { ChartColor.FromRgba(255, 99, 132, 0.2f), ChartColor.FromRgba(73, 191, 114, 0.2f), ChartColor.FromRgba(54, 162, 235, 0.2f) },
+            BorderColor = new List<string> { ChartColor.FromRgba(255, 99, 132, 1f), ChartColor.FromRgba(73, 191, 114, 1f), ChartColor.FromRgba(54, 162, 235, 1f) },
+            BorderWidth = 1
+        };
+    }
+
+    BarChartDataset<double> GetBarChartDataset()
+    {
+        return new BarChartDataset<double>
+        {
+            Label = "Cantidad",
+            Data = ruteo,
+            BackgroundColor = backgroundColors,
+            BorderColor = borderColors,
+            BorderWidth = 1
+        };
+    }
+
+    DoughnutChartDataset<double> GetDoughnutChartDataset()
+    {
+        return new DoughnutChartDataset<double>
+        {
+            Label = "Observado",
+            Data = observaciones,
+            BackgroundColor = new List<string> { ChartColor.FromRgba(255, 99, 132, 0.2f), ChartColor.FromRgba(73, 191, 114, 0.2f) },
+            BorderColor = new List<string> { ChartColor.FromRgba(255, 99, 132, 1f), ChartColor.FromRgba(73, 191, 114, 1f) },
+            BorderWidth = 1
+        };
+    }
+
+
+    LineChartDataset<double> GetLineChartDataset()
+    {
+        return new LineChartDataset<double>
+        {
+            Label = "Volumen (m3)",
+            Data = entregados,
+            BackgroundColor = backgroundColors,
+            BorderColor = borderColors,
+            Fill = true,
+            PointRadius = 3,
+            BorderWidth = 1,
+            PointBorderColor = Enumerable.Repeat(borderColors.First(), 6).ToList()
+        };
+    }
+
+
+    //ChartDataset<double> GetChartDataset()
+    //{
+    //    return new ChartDataset<double>
+    //    {
+    //        Label = "t",
+    //        Data = RandomizeData(),
+    //        BackgroundColor = backgroundColors,
+    //        BorderColor = borderColors
+    //    };
+    //}
+
+
+    //PolarAreaChartDataset<double> GetPolarAreaChartDataset()
+    //{
+    //    return new PolarAreaChartDataset<double>
+    //    {
+    //        Label = "# de aleatorios",
+    //        Data = RandomizeData(),
+    //        BackgroundColor = backgroundColors,
+    //        BorderColor = borderColors,
+    //        BorderWidth = 1
+    //    };
+    //}
+
+    //RadarChartDataset<double> GetRadarChartDataset()
+    //{
+    //    return new RadarChartDataset<double>
+    //    {
+    //        Label = "custom radar",
+    //        Data = RandomizeData(),
+    //        BackgroundColor = backgroundColors,
+    //        BorderColor = borderColors,
+    //        LineTension = 0.0f,
+    //        BorderWidth = 1
+    //    };
+    //}
+
+    async Task LoadStats()
+    {
+        stats = await dbaccess.GetEstadisticas();
+        localidades = stats.FindAll(x => x.LOC != null).Select(x => x.LOC.ToUpper()).Distinct().OrderBy(x => x).ToList();
+        statsloaded = true;
+        StateHasChanged();
+    }
+
+    async Task CalcularEnTermino(string loc, DateTime desde, DateTime hasta)
+    {
+        entermino.Clear();
+        double antes = 0;
+        double tarde = 0;
+        double atiempo = 0;
+        DateTime f;
+
+        foreach (Stats x in stats)
+        {
+            if (x.FECPREVENT == null || x.FECPREVENT.Contains("S/Locali")) continue;
+
+            f = Convert.ToDateTime(x.FECING);
+
+            if (loc == "" || loc == "TODAS")
+            {
+                if ((x.EST == "ENTREGADO" || x.EST == "ENTREGADO PARCIAL") && f >= desde && f <= hasta)
+                {
+                    if (Convert.ToDateTime(x.FECPREVENT) > Convert.ToDateTime(x.FECCONFMOB))
+                    {
+                        antes++;
+                    }
+                    if (Convert.ToDateTime(x.FECPREVENT) < Convert.ToDateTime(x.FECCONFMOB))
+                    {
+                        tarde++;
+                    }
+                    if (Convert.ToDateTime(x.FECPREVENT) == Convert.ToDateTime(x.FECCONFMOB))
+                    {
+                        atiempo++;
+                    }
+                }
+            }
+            else
+            {
+                if ((x.EST == "ENTREGADO" || x.EST == "ENTREGADO PARCIAL") && f >= desde && f <= hasta && loc == x.LOC)
+                {
+                    if (Convert.ToDateTime(x.FECPREVENT) > Convert.ToDateTime(x.FECCONFMOB))
+                    {
+                        antes++;
+                    }
+                    if (Convert.ToDateTime(x.FECPREVENT) < Convert.ToDateTime(x.FECCONFMOB))
+                    {
+                        tarde++;
+                    }
+                    if (Convert.ToDateTime(x.FECPREVENT) == Convert.ToDateTime(x.FECCONFMOB))
+                    {
+                        atiempo++;
+                    }
+                }
+            }
+
+        }
+
+        totalentermino = tarde + antes + atiempo;
+        StateHasChanged();
+        entermino.Clear();
+        entermino.Insert(0, tarde);
+        entermino.Insert(1, antes);
+        entermino.Insert(2, atiempo);
+
+        await HandleRedraw(pieChart, GetPieChartDataset, EnTermino);
+
+    }
+
+    async Task CalcularEntregados(DateTime desde, DateTime hasta)
+    {
+        entregados.Clear();
+
+        List<StatsVOL> a = await dbaccess.GetEstadisticasVOL(desde, hasta, estadosSelected);
+        entregados = a.Select(x => double.Parse(x.VOL)).ToList();
+        string[] Entregados = a.Select(x => x.LOC).ToArray();
+
+        await HandleRedraw(lineChartWithData, GetLineChartDataset, Entregados);
+
+    }
+
+    async Task CalcularDisponiblesRuteo(DateTime desde, DateTime hasta)
+    {
+        ruteo.Clear();
+        double ruteable = 0;
+        double bcomercial = 0;
+        double blogistico = 0;
+        double total = 0;
+        DateTime f;
+
+        if (estadosSelected != "TODOS")
+        {
+
+
+            foreach (Stats x in stats)
+            {
+                f = Convert.ToDateTime(x.FECING);
+
+                if (x.EST == estadosSelected && f >= desde && f <= hasta)
+                {
+                    total++;
+
+                    if (x.ESPC == "N" && x.ESPL == "N")
+                    {
+                        ruteable++;
+                    }
+
+                    if (x.ESPC == "S")
+                    {
+                        bcomercial++;
+                    }
+
+                    if (x.ESPL == "S")
+                    {
+                        blogistico++;
+                    }
+
+                }
+            }
+
+        }
+        else
+        {
+            foreach (Stats x in stats)
+            {
+                f = Convert.ToDateTime(x.FECING);
+
+                if (f >= desde && f <= hasta)
+                {
+                    total++;
+
+                    if (x.ESPC == "N" && x.ESPL == "N")
+                    {
+                        ruteable++;
+                    }
+
+                    if (x.ESPC == "S")
+                    {
+                        bcomercial++;
+                    }
+
+                    if (x.ESPL == "S")
+                    {
+                        blogistico++;
+                    }
+
+                }
+            }
+        }
+
+
+        ruteo.Add(bcomercial);
+        ruteo.Add(blogistico);
+        ruteo.Add(ruteable);
+        ruteo.Add(total);
+
+        await HandleRedraw(barChart, GetBarChartDataset, Ruteo);
+
+    }
+
+    async Task CalcularObservaciones(DateTime desde, DateTime hasta)
+    {
+        observaciones.Clear();
+        List<StatsOBS> s = new();
+        double si = 0;
+        double no = 0;
+        s = await dbaccess.GetEstadisticasOBS();
+        DateTime f;
+
+        if (estadosSelected == "TODOS")
+        {
+            foreach (StatsOBS item in s)
+            {
+                f = Convert.ToDateTime(item.FECHA);
+
+                if (f >= desde && f <= hasta)
+                {
+                    if (string.IsNullOrEmpty(item.OBS) || item.OBS.Contains("NO"))
+                    {
+                        no++;
+                    }
+                    else if (item.OBS.Contains("SI"))
+                    {
+                        si++;
+                    }
+                }
+            }
+        }
+        else
+        {
+            foreach (StatsOBS item in s)
+            {
+                f = Convert.ToDateTime(item.FECHA);
+
+                if (f >= desde && f <= hasta && item.EST == estadosSelected)
+                {
+                    if (string.IsNullOrEmpty(item.OBS) || item.OBS.Contains("NO"))
+                    {
+                        no++;
+                    }
+                    else if (item.OBS.Contains("SI"))
+                    {
+                        si++;
+                    }
+                }
+            }
+        }
+
+        observaciones.Add(si);
+        observaciones.Add(no);
+
+        await HandleRedraw(doughnutChart, GetDoughnutChartDataset, OBS);
+
+    }
+
+    void ValidarVendedor()
+    {
+        string rpte = "";
+        foreach (oAtributo item in Session.Atributos)
+        {
+            if (item.Atributo == "Representante")
+            {
+                rpte = item.Valor;
+            }
+        }
+
+        if (rpte == "TODOS" || rpte == null)
+        {
+            vendedor = false;
+        }
+        else
+        {
+            vendedor = true;
+        }
+
+    }
+
+
+    #region COOKIES
+    async Task EscribirCookie(string Nombre, string Valor, int MinutosExpiracion)
+    {
+        await JS.InvokeAsync<string>("blazorExtensions.CrearCookie", Nombre, Valor, MinutosExpiracion);
+    }
+
+    async Task BorrarCookie(string Nombre)
+    {
+        await JS.InvokeAsync<string>("blazorExtensions.BorrarCookie", Nombre);
+    }
+
+
+    async Task<string> LeerCookie(string Nombre)
+    {
+
+        string cookie = await JS.InvokeAsync<string>("blazorExtensions.LeerCookie", Nombre);
+
+        if (string.IsNullOrEmpty(cookie))
+        {
+            return "";
+        }
+        else
+        {
+            return cookie;
+        }
+
+    }
+    #endregion
+
+    async Task ValidarUsuario()
+    {
+        string permisoAcceso = await oConfig.ObtenerVariable("PermisoAcceso");
+        string permisoComercial = await oConfig.ObtenerVariable("PermisoComercial");
+        string permisoLogistico = await oConfig.ObtenerVariable("PermisoLogistico");
+        string idApp = await oConfig.ObtenerVariable("IdApp");
+        string urlPortal = await oConfig.ObtenerVariable("urlPortal");
+        int sessionTimeout = Convert.ToInt32(await oConfig.ObtenerVariable("sessiontimeout"));
+
+        try
+        {
+            oPeticion peticion = new oPeticion();
+
+            string token = "";
+
+            var uri = navManager.ToAbsoluteUri(navManager.Uri);
+            if (QueryHelpers.ParseQuery(uri.Query).TryGetValue("token", out var parametro))
+            {
+                token = parametro;
+            }
+
+            if (!string.IsNullOrEmpty(token))
+            {
+                peticion.Token = token;
+                bool TokenValido = await SSO.ValidarToken(peticion);
+
+                if (TokenValido == true)
+                {
+                    await EscribirCookie("token", token, sessionTimeout);
+                }
+                else
+                {
+                    await BorrarCookie("token");
+                }
+            }
+
+            token = await LeerCookie("token");
+
+            if (!string.IsNullOrEmpty(token))
+            {
+                peticion.Token = token;
+
+                user = await LeerCookie("cuenta");
+
+                if (string.IsNullOrEmpty(user))
+                {
+                    peticion = await SSO.ObtenerCuentaPorToken(peticion);
+
+                    if (string.IsNullOrEmpty(peticion.Cuenta))
+                    {
+                        Session.Error = "No se encontró la cuenta asociada al token.";
+                        navManager.NavigateTo("Error");
+                        return;
+                    }
+
+                    await EscribirCookie("cuenta", peticion.Cuenta, sessionTimeout);
+                }
+                else
+                {
+                    peticion.Cuenta = user;
+                }
+            }
+            else
+            {
+                string urlportal = urlPortal + "login.aspx?idapp=" + idApp;
+                navManager.NavigateTo(urlportal);
+                return;
+            }
+
+            // ---------------- PERMISOS ----------------
+
+            if (Session.Permisos == null)
+            {
+                peticion.IdApp = idApp;
+
+                Session.Permisos = await SSO.ObtenerPermisos(peticion);
+            }
+
+            if (SSO.ValidarPermiso(Session.Permisos, permisoAcceso) == false)
+            {
+                Session.Error = "No tiene permisos para acceder a este sitio.";
+                navManager.NavigateTo("Error");
+                return;
+            }
+
+            Session.Comercial = SSO.ValidarPermiso(Session.Permisos, permisoComercial);
+            Session.Logistico = SSO.ValidarPermiso(Session.Permisos, permisoLogistico);
+
+            if (Session.Atributos == null)
+            {
+                Session.Atributos = await SSO.ObtenerAtributos(peticion);
+            }
+
+            ValidarVendedor();
+
+            if (vendedor == true)
+            {
+                Session.Error = "No tiene permisos para acceder a este sitio.";
+                navManager.NavigateTo("Error");
+                return;
+            }
+            StateHasChanged();
+        }
+        catch (Exception)
+        {
+        }
+    }
+
+}
+
+<style>
+    .show > .dropdown-menu {
+        position: absolute;
+        overflow-y: auto !important;
+        will-change: unset !important;
+        top: unset !important;
+        left: unset !important;
+        transform: none !important;
+        max-height: 710% !important;
+    }
+</style>

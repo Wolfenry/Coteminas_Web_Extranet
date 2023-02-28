@@ -1,0 +1,254 @@
+﻿@*loading truck*@
+<div class="carga" hidden="@(hidetruck)" style="background-color: rgba(0,0,0,0.5);z-index:2000;">
+    <img src="../img/mytruck.svg" style="height: 150px;" />
+</div>
+
+<Bar Breakpoint="Breakpoint.Desktop"
+     Style="background: #d31e23;"
+     ThemeContrast="ThemeContrast.Dark">
+    <BarBrand>
+        @*<span>
+                <img alt="Loginter" src="../img/loginter white.svg" height="25" id="navlogo" @onclick="@(()=>NavigationManager.NavigateTo("/"))">
+            </span>*@
+
+        <div>
+            <a href="/admpedidos">
+                <img id="imgcoteminas" alt="Coteminas" src="../img/coteminas.png" height="25" style=" margin-left: 23px; margin-top: -13px;">
+                <span id="contrastelogo"></span>
+            </a>
+            <span id="contrasteopciones"></span>
+        </div>
+
+    </BarBrand>
+    <BarToggler />
+    <BarMenu>
+        <BarEnd>
+
+            <BarItem>
+                <BarLink To="/">Inicio</BarLink>
+            </BarItem>
+
+            <BarItem>
+                <BarDropdown>
+                    <div class="d-flex">
+                        <img alt="Avatar" src="../img/default_avatar.jpg" width="25" height="25" class="rounded-circle mt-2 mr-1 ml-1">
+                        <a class="nav-link dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">@username</a>
+                        <div class="dropdown-menu dropdown-menu-right w-auto shadow p-0" aria-labelledby="dropdownloginter">
+                            @if (vendedor)
+                            {
+                                <a class="dropdown-item" href="/admpedidos">Adm. Pedidos</a>
+                                <DropdownDivider />
+                                <a class="dropdown-item" @onclick="CerrarSesion">Cerrar Sesion</a>
+                            }
+                            else
+                            {
+                                <a class="dropdown-item" href="/admpedidos">Adm. Pedidos</a>
+                                <a class="dropdown-item" href="/stockart">Stock Art.</a>
+                                <a class="dropdown-item" href="/recepciones">Det. Recepciones</a>
+                                <DropdownDivider />
+                                <a class="dropdown-item" href="/estadisticas">Estadisticas</a>
+                                <DropdownDivider />
+                                <a class="dropdown-item" @onclick="CerrarSesion">Cerrar Sesion</a>
+                            }
+                        </div>
+                    </div>
+
+                </BarDropdown>
+            </BarItem>
+
+        </BarEnd>
+
+    </BarMenu>
+</Bar>
+
+@code{
+
+    string username = "Usuario";
+    bool hidetruck { get; set; } = true;
+    bool fRender = true; //reemplazo de firstRender
+    bool vendedor = true;
+
+    protected override void OnInitialized()
+    {
+        hidetruck = false;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (fRender)
+        {
+            await ValidarUsuario();
+            await JS.InvokeVoidAsync("setContrasteWidth");
+
+            fRender = false;
+        }
+    }
+
+    async Task ValidarUsuario()
+    {
+        string permisoAcceso = await oConfig.ObtenerVariable("PermisoAcceso");
+        string permisoComercial = await oConfig.ObtenerVariable("PermisoComercial");
+        string permisoLogistico = await oConfig.ObtenerVariable("PermisoLogistico");
+        string idApp = await oConfig.ObtenerVariable("IdApp");
+        string urlPortal = await oConfig.ObtenerVariable("urlPortal");
+        int sessionTimeout = Convert.ToInt32(await oConfig.ObtenerVariable("sessiontimeout"));
+
+        try
+        {
+            oPeticion peticion = new oPeticion();
+
+            string token = "";
+
+            var uri = navManager.ToAbsoluteUri(navManager.Uri);
+            if (QueryHelpers.ParseQuery(uri.Query).TryGetValue("token", out var parametro))
+            {
+                token = parametro;
+            }
+
+            if (!string.IsNullOrEmpty(token))
+            {
+                peticion.Token = token;
+                bool TokenValido = await SSO.ValidarToken(peticion);
+
+                if (TokenValido == true)
+                {
+                    await EscribirCookie("token", token, sessionTimeout);
+                }
+                else
+                {
+                    await BorrarCookie("token");
+                }
+            }
+
+            token = await LeerCookie("token");
+
+            if (!string.IsNullOrEmpty(token))
+            {
+                peticion.Token = token;
+
+                username = await LeerCookie("cuenta");
+
+                if (string.IsNullOrEmpty(username))
+                {
+                    peticion = await SSO.ObtenerCuentaPorToken(peticion);
+
+                    if (string.IsNullOrEmpty(peticion.Cuenta))
+                    {
+                        Session.Error = "No se encontró la cuenta asociada al token.";
+                        navManager.NavigateTo("Error");
+                        return;
+                    }
+
+                    await EscribirCookie("cuenta", peticion.Cuenta, sessionTimeout);
+                }
+                else
+                {
+                    peticion.Cuenta = username;
+                }
+            }
+            else
+            {
+                string urlportal = urlPortal + "login.aspx?idapp=" + idApp;
+                navManager.NavigateTo(urlportal);
+                return;
+            }
+
+            // ---------------- PERMISOS ----------------
+
+            if (Session.Permisos == null)
+            {
+                peticion.IdApp = idApp;
+
+                Session.Permisos = await SSO.ObtenerPermisos(peticion);
+            }
+
+            if (SSO.ValidarPermiso(Session.Permisos, permisoAcceso) == false)
+            {
+                Session.Error = "No tiene permisos para acceder a este sitio.";
+                navManager.NavigateTo("Error");
+                return;
+            }
+
+            Session.Comercial = SSO.ValidarPermiso(Session.Permisos, permisoComercial);
+            Session.Logistico = SSO.ValidarPermiso(Session.Permisos, permisoLogistico);
+
+            if (Session.Atributos == null)
+            {
+                Session.Atributos = await SSO.ObtenerAtributos(peticion);
+            }
+
+            username = await LeerCookie("cuenta");
+            Session.Username = username;
+
+            ValidarVendedor();
+
+            hidetruck = true;
+
+            StateHasChanged();
+        }
+        catch (Exception)
+        {
+        }
+    }
+
+    void ValidarVendedor()
+    {
+        string rpte = "";
+
+        foreach (oAtributo item in Session.Atributos)
+        {
+            if (item.Atributo == "Representante")
+            {
+                rpte = item.Valor;
+            }
+        }
+
+        if (rpte == "TODOS" || rpte == null)
+        {
+            vendedor = false;
+        }
+        else
+        {
+            vendedor = true;
+        }
+
+    }
+
+    private async void CerrarSesion()
+    {
+        await BorrarCookie("cuenta");
+        await BorrarCookie("token");
+        string urlPortalLogout = await oConfig.ObtenerVariable("urlLogOut");
+        string IdApp = await oConfig.ObtenerVariable("IdApp");
+        navManager.NavigateTo(urlPortalLogout + "?idapp=" + IdApp);
+    }
+
+    #region COOKIES
+    async Task EscribirCookie(string Nombre, string Valor, int MinutosExpiracion)
+    {
+        await JS.InvokeAsync<string>("blazorExtensions.CrearCookie", Nombre, Valor, MinutosExpiracion);
+    }
+
+    async Task BorrarCookie(string Nombre)
+    {
+        await JS.InvokeAsync<string>("blazorExtensions.BorrarCookie", Nombre);
+    }
+
+
+    async Task<string> LeerCookie(string Nombre)
+    {
+
+        string cookie = await JS.InvokeAsync<string>("blazorExtensions.LeerCookie", Nombre);
+
+        if (string.IsNullOrEmpty(cookie))
+        {
+            return "";
+        }
+        else
+        {
+            return cookie;
+        }
+
+    }
+    #endregion
+}

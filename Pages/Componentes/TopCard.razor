@@ -1,0 +1,16 @@
+﻿<div class="card  lborder shadow-sm flexrowandcolor bgwrap">
+    <div class="card-body" style="padding: 4px;">
+        <p class="card-text mb-0 pl-4"><small class="text-muted">@Name</small></p>
+        <p class="mb-0 text-center font-weight-bold counter" data-from="0" data-to="@Value"></p>
+    </div>
+    <img src="@Img" />
+</div>
+
+@code {
+    [Parameter]
+    public int Value { get; set; }
+    [Parameter]
+    public string Name { get; set; }
+    [Parameter]
+    public string Img { get; set; }
+}

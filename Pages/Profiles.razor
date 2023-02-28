@@ -1,0 +1,64 @@
+﻿@page  "/perfil"
+@inject DbAccess dbaccess
+@using Models
+
+<div id="fadegrid">
+
+    <h3 class="text-center mt-5">Perfil</h3>
+    <div class="container">
+        <div class="row justify-content-center" style="display: block; margin-top: 6%; margin-left: 10%; margin-right: 10%">
+            <form>
+
+                <div class="form-row text-center">
+                    <div class="form-group col-md-6">
+                        <label for="ID">ID</label>
+                        <TextEdit @bind-Text="@id" ReadOnly="true" />
+                    </div>
+                    <div class="form-group col-md-6">
+                        <label for="Usuario">Usuario</label>
+                        <TextEdit @bind-Text="@login" ReadOnly="true" />
+                    </div>
+                </div>
+
+                <div class="form-row text-center">
+                    <div class="form-group col-md-6">
+                        <label for="Nombre">Nombre</label>
+                        <TextEdit @bind-Text="@nombre" Placeholder="Nombre..." />
+                    </div>
+                    <div class="form-group col-md-6">
+                        <label for="Contraseña">Clave</label>
+                        <TextEdit @bind-Text="@clave" Role="TextRole.Password" Placeholder="Clave..." />
+                    </div>
+                </div>
+
+                <div class="form-row text-center justify-content-center mt-3">
+                    <Button Color="Color.Secondary" Class="m-4">Cancelar</Button>
+                    <Button Color="Color.Danger" Class="m-4" Type="ButtonType.Submit">Guardar</Button>
+                </div>
+
+            </form>
+        </div>
+    </div>
+    </div>
+
+    @code{
+         string id;
+         string login;
+        string nombre;
+        string clave;
+
+        string idlog = "mbokor";
+
+        ProfilesData pd = new ProfilesData();
+
+        protected override async Task OnAfterRenderAsync(bool firstRender)
+        {
+            if (firstRender)
+            {
+                //pd = await dbaccess.GetProfile(idlog);
+
+                firstRender = false;
+            }
+            StateHasChanged();
+        }
+    }

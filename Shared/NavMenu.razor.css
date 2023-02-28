@@ -1,0 +1,136 @@
+/*NAVBAR*/
+.bd-placeholder-img {
+    font-size: 1.125rem;
+    text-anchor: middle;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+@media (min-width: 768px) {
+    .bd-placeholder-img-lg {
+        font-size: 3.5rem;
+    }
+}
+
+html, body {
+    margin: 0px;
+    padding: 0px;
+    overflow-x: hidden;
+}
+/*END NAVBAR*/
+
+/************** ARCHIVOS DE FUENTES **************/
+@font-face {
+    font-family: 'GothamExtraLight';
+    src: url('../fonts/Gotham Extra Light.otf') format('opentype');
+}
+
+
+@font-face {
+    font-family: 'GothamBold';
+    src: url('../fonts/GothamBold.ttf') format('truetype');
+}
+
+
+@font-face {
+    font-family: 'GothamBook';
+    src: url('../fonts/GothamBook.ttf') format('truetype');
+}
+
+
+
+
+/************** FUENTES **************/
+.logFuenteTitulo {
+    font-family: GothamBold;
+}
+
+
+.logFuenteTexto {
+    font-family: GothamBook;
+}
+
+
+.logFuenteAlternativo {
+    font-family: GothamExtraLight;
+}
+
+
+
+
+/************** COLORES **************/
+.logColorRojo {
+    color: #d31e23 !important;
+}
+
+
+.logColorGris {
+    color: #625e5c !important;
+}
+
+
+.logColorCeleste {
+    color: #42b5c1 !important;
+}
+
+
+
+
+
+/************** FONDOS **************/
+.logFondoRojo {
+    background-color: #d31e23 !important;
+}
+
+
+.logFondoGris {
+    background-color: #625e5c !important;
+}
+
+
+.logFondoCeleste {
+    background-color: #42b5c1 !important;
+}
+
+
+body {
+    background: url('../img/Slanted-Gradient.svg');
+    background-size: cover;
+    background-position: left;
+    background-repeat: no-repeat;
+}
+
+
+
+/************** ESTILO PARA EL EFECTO DE TRANSICION ENTRE PAGINAS **************/
+.scroller {
+    max-height: 470px;
+    overflow: auto;
+}
+
+
+.LockOn {
+    display: block;
+    visibility: visible;
+    position: fixed;
+    z-index: 999;
+    top: 0px;
+    left: 0px;
+    width: 105%;
+    height: 105%;
+    background-color: #625e5c;
+    vertical-align: bottom;
+    padding-top: 20%;
+    filter: alpha(opacity=85);
+    opacity: 0.88;
+    font-size: large;
+    color: blue;
+    font-style: italic;
+    font-weight: 400;
+    background-image: url("../img/pulse.svg");
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+    background-position: center;
+}

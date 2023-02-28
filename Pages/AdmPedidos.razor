@@ -1,0 +1,1937 @@
+﻿@page "/admpedidos"
+@inject DbAccess dbaccess
+@using System.Data;
+@using System.Reflection;
+
+
+@*default load*@
+<div class="carga" hidden="@(!hide)">
+    <img src="../img/mytruck.svg" style="height: 150px;" />
+    <p class="carga" style="margin-top:50px;">Cargando, por favor espere..</p>
+</div>
+
+@*loading truck*@
+<LoadTruck Hidden="@hidetruck"></LoadTruck>
+
+@if (loaded)
+{
+    @*grilla*@
+    <div class="mt-2 ml-2" hidden="@hide">
+
+        @*cards top / search/ dropdown fecha*@
+        <div class="mb-2 mr-3">
+
+            <div class="card-deck flex-row" style="flex-flow:unset!important">
+
+                <div class="card  lborder shadow-sm flexrowandcolor bgwrap">
+
+                    <div class="card-body" style="padding: 4px;">
+                        <p class="card-text mb-0 pl-4"><small class="text-muted" style="margin-right:9px;">Remitos</small><b>@(!activos ? "ACTIVOS" : "TODOS")</b> <Icon Name="@("fa-sync-alt")" Style="margin-left:5px;cursor:pointer;" @onclick="@(() => ReloadCountResume())" /></p>
+                        <p class="mb-0 text-center font-weight-bold counter" data-from="0" data-to="@remitos"></p>
+                    </div>
+                    <img src="../img/receipt2.svg" />
+                </div>
+                <TopCard Name="Bultos" Value="@bultos" Img="../img/stock.svg" />
+                <TopCard Name="Unidades" Value="@unidades" Img="../img/warehouse.svg" />
+                <div class="card lborder shadow-sm flexrowandcolor bgwrap">
+                    <div class="card-body" style="padding: 4px;">
+                        <p class="card-text mb-0 pl-4"><small class="text-muted">Volumen (m³)</small></p>
+                        <div class="mb-0 text-center font-weight-bold d-flex justify-content-center">
+                            <p class="counter" data-from="0" data-to="@(Convert.ToInt32(vol[0]))"></p>
+                            <p>.</p>
+                            <p class="counter" data-from="0" data-to="@(Convert.ToInt32(vol[1]))"></p>
+                        </div>
+                    </div>
+                    <img src="../img/chart2.svg" />
+                </div>
+                <TopCard Name="Lineas" Value="@lineas" Img="../img/receipt.svg" />
+
+                <div>
+                    <TextEdit ElementId="bgeneral" Placeholder=" Busqueda General" @bind-Text="@customFilterValue" Class="mr-1 shadow-md" Style="width: 200px;height: 41px !important;" />
+
+                    <div id="periodo">
+                        <Dropdown Style="margin-top: 5px;">
+                            <DropdownToggle Color="Color.Primary" Style=" padding: 0px !important; width: 200px!important; opacity:0.6">
+                                Período
+                            </DropdownToggle>
+                            <DropdownMenu Padding="Padding.Is0">
+                                <DropdownItem Class="@(year == 2021 ? "active" : "")" Clicked="@(async () => { await truck(); year = 2021; await LoadOES(activos, year); await JS.InvokeVoidAsync("countup"); })">2021</DropdownItem>
+                                <DropdownItem Class="@(year == 2020 ? "active" : "")" Clicked="@(async () => { await truck(); year = 2020; await LoadOES(activos, year); await JS.InvokeVoidAsync("countup"); })">2020</DropdownItem>
+                                <DropdownItem Class="@(year == 2019 ? "active" : "")" Clicked="@(async () => { await truck(); year = 2019; await LoadOES(activos, year); await JS.InvokeVoidAsync("countup"); })">2019</DropdownItem>
+                            </DropdownMenu>
+                        </Dropdown>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <div @onmousedown="e => hidepop = false">
+
+            <div id="fadegrid">
+                <DataGrid TItem="OrderExtensionStatic"
+                          Data="oes"
+                          CustomFilter="OnCustomFilter"
+                          Responsive
+                          Bordered
+                          Striped
+                          Narrow
+                          Filterable
+                          Sortable
+                          ShowPager
+                          PageSize="psize"
+                          FilteredDataChanged="Filtrado()"
+                          HeaderRowStyling="@(new DataGridRowStyling { Style = "color: grey; font-size: 13px; font-weigth: bold" })"
+                          RowStyling="@((a, b) => b.Style = "color: black; font-size: 12px" )"
+                          SelectedRowStyling="@( (a, b) => { b.Style = "color: red; font-size: 13px;"; b.Color = Color.Warning; } )"
+                          @bind-SelectedRow="@selectednoped"
+                          RowDoubleClicked="e => { hidepop = true; iconname = selectednoped.NOPED; }"
+                          ElementId="tabla">
+                    <DataGridColumns>
+
+                        <DataGridCheckColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic._chk)" Filterable="true" Sortable="false">
+                            <CaptionTemplate>
+                                <Icon id="cog" Name="@("fa-cog")" Class="rotate" Style="padding:10px;color:gray;" @onmousedown="@(e => hidecommands = !hidecommands)" />
+
+                                @*popup comandos grilla*@
+                                <div id="slidedown2" class="@(hidecommands ? "hidden" : "")" style="position:absolute;z-index:1;">
+                                    <div class="card bg-dark p-1">
+
+                                        <div class="card-header text-center p-2">
+                                            <h5 class="card-title">Menu</h5>
+                                        </div>
+                                        @if (vendedor)
+                                        {
+                                            <Button Class="m-1 btn btn-bokorgreen" Clicked="@(async () => { await truck(); await LoadOES(activos, year); hidecommands = !hidecommands; await JS.InvokeVoidAsync("countup"); })"><Icon Name="IconName.SyncAlt" /> Recargar Grilla</Button>
+                                            <Button Class="m-1 btn btn-bokorgrey" Clicked="(() => { CheckAllRemitos(oes); hidecommands = !hidecommands; })"><Icon Name="IconName.CheckSquare" /> Seleccionar Todos</Button>
+                                            if (activos)
+                                            {
+                                                <Button Class="m-1 btn btn-dark" Style="opacity:1;" @onclick="@(async () => { await truck(); activos = !activos; await LoadOES(activos, year); hidecommands = !hidecommands; await JS.InvokeVoidAsync("countup"); })"><Icon Name="IconName.Check" /> Mostrar Activos </Button>
+                                            }
+                                            else
+                                            {
+                                                <Button Class="m-1 btn btn-dark" Style="opacity:1;" @onclick="@(async () => { await truck(); activos = !activos; await LoadOES(activos, year); hidecommands = !hidecommands; await JS.InvokeVoidAsync("countup"); })"><Icon Name="IconName.CheckCircle" /> Mostrar Todo </Button>
+                                            }
+                                            <Button Class="m-1 btn btn-dark" Clicked="(async () => { hidecommands = !hidecommands; await truck(); await ExportarExcel(); })"><Icon Name="IconName.Share" />  Exportar</Button>
+                                            <Button id="colvis" Class="m-1 btn btn-bokorgrey" Clicked="(() => { hidepop2 = !hidepop2; hidecommands = !hidecommands; })"><Icon Name="IconName.List" />  Visibilidad Columnas</Button>
+                                        }
+                                        else
+                                        {
+                                            <Button Class="m-1 btn btn-bokorgreen" Clicked="(() => { CheckAllRemitos(oes); hidecommands = !hidecommands; })"><Icon Name="IconName.CheckSquare" /> Seleccionar Todos</Button>
+                                            <Button Class="m-1 btn btn-bokorgrey" Clicked="@(async () => { await truck(); await LoadOES(activos, year); hidecommands = !hidecommands; await JS.InvokeVoidAsync("countup"); })"><Icon Name="IconName.SyncAlt" /> Recargar Grilla</Button>
+                                            if (activos)
+                                            {
+                                                <Button Class="m-1 btn btn-dark" Style="opacity:1;" @onclick="@(async () => { await truck(); activos = !activos; await LoadOES(activos, year); hidecommands = !hidecommands; await JS.InvokeVoidAsync("countup"); })"><Icon Name="IconName.Check" /> Mostrar Activos </Button>
+                                            }
+                                            else
+                                            {
+                                                <Button Class="m-1 btn btn-dark" Style="opacity:1;" @onclick="@(async () => { await truck(); activos = !activos; await LoadOES(activos, year); hidecommands = !hidecommands; await JS.InvokeVoidAsync("countup"); })"><Icon Name="IconName.CheckCircle" /> Mostrar Todo </Button>
+                                            }
+                                            <Button Class="m-1 btn btn-dark" Clicked="(() => { hidecommands = !hidecommands; autosync.Show(); })"><Icon Name="IconName.ArrowUp" />  Auto-Asignar</Button>
+                                            <Button Class="m-1 btn btn-dark" Clicked="(() => { MostrarBloqlib(); hidecommands = !hidecommands; })"><Icon Name="IconName.Unlock" /> Bloqueo/Liberacion</Button>
+                                            <Button Class="m-1 btn btn-dark" Clicked="(async () => { hidecommands = !hidecommands; await truck(); await ExportarExcel(); })"><Icon Name="IconName.Share" />  Exportar</Button>
+                                            <Button Class="m-1 btn btn-dark" Clicked="(async () => { hidecommands = !hidecommands; await truck(); await ExportarExcelStockHabilitado(); })"><Icon Name="IconName.Check" />  Stock Habilitado</Button>
+                                            <Button Class="m-1 btn btn-dark" Clicked="(() => { ShowModal(rangofecha); hidecommands = !hidecommands; })"><Icon Name="IconName.CalendarWeek" /> Exportar en Rango</Button>
+                                            <Button id="colvis" Class="m-1 btn btn-bokorgrey" Clicked="(() => { hidepop2 = !hidepop2; hidecommands = !hidecommands; })"><Icon Name="IconName.List" />  Visibilidad Columnas</Button>
+                                        }
+                                    </div>
+                                </div>
+
+                            </CaptionTemplate>
+                            <FilterTemplate>
+                                <Icon Name="@("fa-broom")" Style="padding:10px;color:gray;" @onmousedown="@(e => Clear())" />
+                            </FilterTemplate>
+                            <DisplayTemplate>
+                                @if (context.EST != "EN VIAJE")
+                                {
+                                    <div class="text-center" id="checks">
+                                        <Check Inline="true" TValue="bool" Checked="context._chk" CheckedChanged="(() => { context._chk = !context._chk; OnCheckedChanged(context); })" />
+                                    </div>
+                                }
+                            </DisplayTemplate>
+                        </DataGridCheckColumn>
+
+                        <DataGridColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.TDOC)" Caption="TDoc" Displayable="coes.TDOC"></DataGridColumn>
+                        <DataGridColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.LETRA)" Caption="L" Filterable="false" Displayable="coes.LETRA"></DataGridColumn>
+                        <DataGridColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.SUC)" Caption="Suc" Displayable="coes.SUC"></DataGridColumn>
+                        <DataGridColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.NOPED)" Caption="Numero"></DataGridColumn>
+                        <DataGridColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.NOFACT)" Caption="Factura"></DataGridColumn>
+                        <DataGridColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.NOOC)" Caption="Nro OC" Displayable="coes.NOOC"></DataGridColumn>
+                        <DataGridColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.DEST)" Caption="Contado" Displayable="coes.DEST">
+                            <FilterTemplate>
+                                <Select TValue="string" SelectedValueChanged="@(e => { context.TriggerFilterChange(e == "*" ? "" : e.ToString()); selectedcontado = e; })" SelectedValue="selectedcontado">
+                                    <SelectItem Value="@("*")"></SelectItem>
+                                    @foreach (var item in contado)
+                                    {
+                                        <SelectItem Value="@item">@item</SelectItem>
+                                    }
+                                </Select>
+                            </FilterTemplate>
+                        </DataGridColumn>
+                        <DataGridColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.ESPC)" Caption="Es.C" Displayable="coes.ESPC">
+                            <FilterTemplate>
+                                <Select TValue="string" SelectedValueChanged="@(e => { context.TriggerFilterChange(e == "*" ? "" : e.ToString()); selectedespc = e; })" SelectedValue="selectedespc">
+                                    <SelectItem Value="@("*")"></SelectItem>
+                                    @foreach (var item in esperac)
+                                    {
+                                        <SelectItem Value="@item">@item</SelectItem>
+                                    }
+                                </Select>
+                            </FilterTemplate>
+                        </DataGridColumn>
+                        <DataGridColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.ESPL)" Caption="Es.L" Displayable="coes.ESPL">
+                            <FilterTemplate>
+                                <Select TValue="string" SelectedValueChanged="@(e => { context.TriggerFilterChange(e == "*" ? "" : e.ToString()); selectedespl = e; })" SelectedValue="selectedespl">
+                                    <SelectItem Value="@("*")"></SelectItem>
+                                    @foreach (var item in esperal)
+                                    {
+                                        <SelectItem Value="@item">@item</SelectItem>
+                                    }
+                                </Select>
+                            </FilterTemplate>
+                        </DataGridColumn>
+                        <DataGridColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.C_STOCK)" Caption="Stock" CellStyle="BackgroundColor"></DataGridColumn>
+                        <DataGridColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.EST)" Caption="Estado">
+                            <FilterTemplate>
+                                <Dropdown @ref="dropdown" Style="width: -webkit-fill-available; position: relative !important;">
+                                    <Button Clicked="@(e => ShowMenu())" Color="Color.Light" Class="pt-1 pb-1">
+                                        -
+                                    </Button>
+                                    <DropdownMenu Style=" max-height: 320px;">
+                                        <div class="ml-2" style="font-size: small;">
+                                            @foreach (var item in estados)
+                                            {
+                                                <Check TValue="bool" Checked="@selectedStatus.Contains(item)"
+                                                       CheckedChanged="@((c) => { if (c)
+                                                                             {
+                                                                                 selectedStatus.Add(item);
+                                                                             }
+                                                                             else
+                                                                             {
+                                                                                 selectedStatus.Remove(item);
+                                                                             }
+                                                                         })">@item</Check>
+                                                                    }
+                                        </div>
+                                        <div class="text-center">
+                                            <DropdownDivider />
+                                            <Button Clicked="@(async () => { if (oesfiltrado.Any()) await FiltrarEstadosOES(); ShowMenu(); })" Color="Color.Primary" Style="width:80%;">Buscar</Button>
+                                        </div>
+                                    </DropdownMenu>
+                                </Dropdown>
+                            </FilterTemplate>
+                            <DisplayTemplate>
+                                <p id="est" style="color: black; font-size: 12px; font-family:'Segoe UI';">@context.EST</p>
+                            </DisplayTemplate>
+                        </DataGridColumn>
+                        <DataGridColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.CLI)" Caption="Cliente" Displayable="coes.CLI"></DataGridColumn>
+                        <DataGridColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.DIRE)" Caption="Direccion" Displayable="coes.DIRE"></DataGridColumn>
+                        <DataGridColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.CIU)" Caption="Ciudad" Displayable="coes.CIU"></DataGridColumn>
+                        <DataGridColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.LOC)" Caption="Provincia" Displayable="coes.LOC"></DataGridColumn>
+                        <DataGridColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.CP)" Caption="CP" Displayable="coes.CP"></DataGridColumn>
+                        <DataGridColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.BLT)" Caption="Butlos" Displayable="coes.BLT"></DataGridColumn>
+                        <DataGridColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.UNI)" Caption="Uni." Displayable="coes.UNI"></DataGridColumn>
+                        <DataGridColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.VOL)" Caption="Vol." Displayable="coes.VOL"></DataGridColumn>
+                        <DataGridColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.CR_User)" Caption="Lineas Rto" Displayable="coes.CR_User"></DataGridColumn>
+                        <DataGridColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.C_Valor)" Caption="Valor Fact" Displayable="coes.C_Valor"></DataGridColumn>
+                        <DataGridColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.C_Rendido)" Caption="Rendido" Displayable="coes.C_Rendido"></DataGridColumn>
+                        <DataGridDateColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.FECDOC)" Caption="Fec.Doc" Displayable="coes.FECDOC"></DataGridDateColumn>
+                        <DataGridDateColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.FECING)" Caption="Fec.Ing" Displayable="coes.FECING"></DataGridDateColumn>
+                        <DataGridDateColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.FECDISP)" Caption="Fec.Disp" Displayable="coes.FECDISP"></DataGridDateColumn>
+                        <DataGridDateColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.FECDIFER)" DisplayFormat="{0:dd/MM/yyyy}" Caption="Fec.Dife" Displayable="coes.FECDIFER"></DataGridDateColumn>
+                        <DataGridDateColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.FECLIBCOM)" Caption="Fec.LibCom" Displayable="coes.FECLIBCOM"></DataGridDateColumn>
+                        <DataGridDateColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.FECLIBLOG)" Caption="Fec.LibLog" Displayable="coes.FECLIBLOG"></DataGridDateColumn>
+                        <DataGridDateColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.FECDIFERMOB)" Caption="Fec.IniViaje" Displayable="coes.FECDIFERMOB"></DataGridDateColumn>
+                        <DataGridDateColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.FECINICOMP)" Caption="Fec.IniComp" Displayable="coes.FECINICOMP"></DataGridDateColumn>
+                        <DataGridDateColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.FECPREVENT)" Caption="Fec.PrevEnt" Displayable="coes.FECPREVENT"></DataGridDateColumn>
+                        <DataGridDateColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.FECCONFENT)" Caption="Fec.ConfEnt" Displayable="coes.FECCONFENT"></DataGridDateColumn>
+                        <DataGridDateColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.FECCONFMOB)" Caption="Fec.ConfReal" Displayable="coes.FECCONFMOB"></DataGridDateColumn>
+                        <DataGridDateColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.FECENT)" Caption="Fec.DigitRto" Displayable="coes.FECENT"></DataGridDateColumn>
+                        <DataGridDateColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.FECRECH)" Caption="Fec.Rech" Displayable="coes.FECRECH"></DataGridDateColumn>
+                        <DataGridColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.OBS)" Caption="Observaciones" Displayable="coes.OBS"></DataGridColumn>
+                        @if (vendedor)
+                        {
+
+                            <DataGridColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.RPTE)" Caption="Representante">
+                                <FilterTemplate>
+                                    <TextEdit Text="@rpte" ReadOnly="true" />
+                                </FilterTemplate>
+                            </DataGridColumn>
+
+                        }
+                        else
+                        {
+                            <DataGridColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.RPTE)" Caption="Representante"></DataGridColumn>
+                        }
+                        <DataGridColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.PRIOR)" Caption="Prioridad" Displayable="coes.PRIOR"></DataGridColumn>
+                        <DataGridColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.TS_User)" Caption="Ruta" Displayable="coes.TS_User"></DataGridColumn>
+
+                    </DataGridColumns>
+
+                    <ButtonRowTemplate>
+                        <Blazorise.Button @ref="@HiddenClearFilterButton" hidden Clicked="@context.ClearFilterCommand.Clicked"></Blazorise.Button>
+                    </ButtonRowTemplate>
+                    <NextPageButtonTemplate>
+                        Siguiente
+                    </NextPageButtonTemplate>
+                    <LastPageButtonTemplate>
+                        Ultimo
+                    </LastPageButtonTemplate>
+                    <EmptyTemplate><div class="text-center">Sin Datos.</div></EmptyTemplate>
+                </DataGrid>
+            </div>
+            <TextEdit @onkeydown="@Enter" @onfocusout="(() => ChangePageSize(psizeval))" @bind-Text="psizeval" Placeholder="Cantidad de registros" MaxLength="3" Style="bottom:49px;position:relative;width:14%;">
+            </TextEdit>
+        </div>
+        @*PageHelper*@
+        <img src="img/question.svg" style="position:fixed;bottom:-10px;right:-18px;height:70px;cursor:pointer" @onclick="Tutorial" />
+    </div>
+}
+@*popup comandos*@
+<div id="slide" class="@(hidepop ? "hidden" : "") popup">
+    <div class="card bg-dark text-white m-4" style="overflow:hidden">
+
+        <div class="card-header text-center p-3">
+            <h5 class="card-title"><img src="img/toolbox.svg" style="height: 24px;" /> Menu Principal</h5>
+            <h6 class="card-subtitle mb-2 text-muted">Acciones Disponibles</h6>
+        </div>
+        <ul class="list-group list-group-flush text-dark">
+            <li class="list-group-item text-center">@iconname</li>
+            <li class="list-group-item">
+                <div class=" card-body d-flex justify-content-around pb-2 pl-2 pr-2 p-0">
+                    <div class="d-flex">
+
+                        @if (vendedor)
+                        {
+                            <Tooltip Text="Ver Detalle">
+                                <Icon @onmousedown="@(async e => { ShowModal(detalles); await LoadODD(); })" Class="ic" Name="IconName.InfoCircle" />
+                            </Tooltip>
+
+                            <Tooltip Text="Visor de Eventos">
+                                <Icon @onclick="@(async e => { ld = await dbaccess.Select(new LogData { Item = selectednoped.NOPED }); ShowModal(visorEventos); })" Class="pl-2 ic" Name="IconName.Eye" />
+                            </Tooltip>
+
+                            if (selectednoped.EST == "ENTREGADO" || selectednoped.EST == "ENTREGADO PARCIALMENTE")
+                            {
+                                <Tooltip Text="TS Docs">
+                                    <Icon @onclick="@(async e => { await GetTSDocs(selectednoped.NOPED); ShowModal(tsdocs); })" Class="pl-2 ic" Name="IconName.FilePdf" />
+                                </Tooltip>
+                            }
+                        }
+                        else
+                        {
+                            <Tooltip Text="Ver Detalle">
+                                <Icon @onmousedown="@(async e => { ShowModal(detalles); await LoadODD(); })" Class="ic" Name="IconName.InfoCircle" />
+                            </Tooltip>
+
+                            <Tooltip Text="Reservar Stock">
+                                <Icon @onmousedown="@(async e => { await truck(); await oesReservar(selectednoped.NOPED, user); })" Class="pl-2 ic" Name="IconName.CheckCircle" />
+                            </Tooltip>
+
+                            <Tooltip Text="Cancelar Reserva Stock">
+                                <Icon @onmousedown="@(async e => { await truck(); await oesCancelarReserva(selectednoped.NOPED, user); })" Class="pl-2 ic" Name="IconName.TimesCircle" />
+                            </Tooltip>
+
+                            <Tooltip Text="Anular Pedido">
+                                <Icon @onmousedown="@(async e => { await dbaccess.OrderExtensionAnular(selectednoped.NOPED, user); })" Class="pl-2 ic" Name="IconName.Ban" />
+                            </Tooltip>
+
+                            <Tooltip Text="Cambiar Direc. Remito">
+                                <Icon @onmousedown="@(async e => { await FillDirecciones(selectednoped.NOPED); selecteddireccion = selectednoped.DIRE; ShowModal(dirRemito); })" Class="pl-2 ic" Name="IconName.Directions" />
+                            </Tooltip>
+
+                            <Tooltip Text="Visor de Eventos">
+                                <Icon @onclick="@(async e => { ld = await dbaccess.Select(new LogData { Item = selectednoped.NOPED }); ShowModal(visorEventos); })" Class="pl-2 ic" Name="IconName.Eye" />
+                            </Tooltip>
+
+                            if (selectednoped.EST == "ENTREGADO" || selectednoped.EST == "ENTREGADO PARCIALMENTE")
+                            {
+                                <Tooltip Text="TS Docs">
+                                    <Icon @onclick="@(async e => { await GetTSDocs(selectednoped.NOPED); ShowModal(tsdocs); })" Class="pl-2 ic" Name="IconName.FilePdf" />
+                                </Tooltip>
+                            }
+                        }
+                    </div>
+                </div>
+            </li>
+        </ul>
+    </div>
+</div>
+
+@*popup count remitos*@
+<div id="slide" class="@(cremitos != 0 ? "hidden" : "") popupcount">
+    <div class="card text-white bg-dark m-4" style="border-radius: 1.25rem!important;">
+        <div class="pl-2 pr-2" style="cursor: pointer;" @onmousedown="(() => mcremitos.Show())">
+            <p style="padding: 4px;color: white;">@cremitos Remitos seleccionados.</p>
+        </div>
+    </div>
+</div>
+
+@*popup columnas*@
+<div id="slidedown" class="@(hidepop2 ? "hidden" : "") popup2">
+    <div class="card text-white bg-secondary m-1">
+        <div class="card-header text-center p-1">
+            Visibilidad de Columnas
+        </div>
+
+        <div class="d-flex flex-column justify-content-around pr-1 pl-1 pb-1">
+            <div>
+                <div class="text-center">
+                    <Button Clicked="(() => CheckAll(coes))" Class="btn btn-primary">Todos</Button>
+                    <Button Clicked="(() => CheckNone(coes))" Class="btn btn-primary">Ninguno</Button>
+                </div>
+                <DropdownDivider />
+                <Check TValue="bool" @bind-Checked="coes.TDOC">TDoc</Check>
+                <Check TValue="bool" @bind-Checked="coes.LETRA">L</Check>
+                <Check TValue="bool" @bind-Checked="coes.SUC">Sucursal</Check>
+                <Check TValue="bool" @bind-Checked="coes.NOOC">Nro.OC</Check>
+                <Check TValue="bool" @bind-Checked="coes.DEST">Contado</Check>
+                <Check TValue="bool" @bind-Checked="coes.ESPC">Espera C</Check>
+                <Check TValue="bool" @bind-Checked="coes.ESPL">Espera L</Check>
+                <Check TValue="bool" @bind-Checked="coes.CLI">Cliente</Check>
+                <Check TValue="bool" @bind-Checked="coes.DIRE">Direccion</Check>
+                <Check TValue="bool" @bind-Checked="coes.CIU">Ciudad</Check>
+                <Check TValue="bool" @bind-Checked="coes.LOC">Provincia</Check>
+                <Check TValue="bool" @bind-Checked="coes.CP">CP</Check>
+                <Check TValue="bool" @bind-Checked="coes.BLT">Bultos</Check>
+                <Check TValue="bool" @bind-Checked="coes.UNI">Uni.</Check>
+                <Check TValue="bool" @bind-Checked="coes.VOL">Vol.</Check>
+                <Check TValue="bool" @bind-Checked="coes.CR_User">Lineas Rto.</Check>
+                <Check TValue="bool" @bind-Checked="coes.C_Valor">Valor Fact</Check>
+                <Check TValue="bool" @bind-Checked="coes.C_Rendido">Rendido</Check>
+                <Check TValue="bool" @bind-Checked="coes.FECDOC">Fec.Doc.</Check>
+                <Check TValue="bool" @bind-Checked="coes.FECING">Fec.Ing.</Check>
+                <Check TValue="bool" @bind-Checked="coes.FECDISP">Fec.Disp.</Check>
+                <Check TValue="bool" @bind-Checked="coes.FECDIFER">Fec.Dife.</Check>
+                <Check TValue="bool" @bind-Checked="coes.FECLIBCOM">Fec.Lib.Com.</Check>
+                <Check TValue="bool" @bind-Checked="coes.FECLIBLOG">Fec.Lib.Log.</Check>
+                <Check TValue="bool" @bind-Checked="coes.FECDIFERMOB">Fec.IniViaje</Check>
+                <Check TValue="bool" @bind-Checked="coes.FECINICOMP">Fec.IniComp</Check>
+                <Check TValue="bool" @bind-Checked="coes.FECPREVENT">Fec.PrevEnt</Check>
+                <Check TValue="bool" @bind-Checked="coes.FECCONFENT">Fec.ConfEnt</Check>
+                <Check TValue="bool" @bind-Checked="coes.FECCONFMOB">Fec.ConfReal</Check>
+                <Check TValue="bool" @bind-Checked="coes.FECENT">Fec.DigitRto</Check>
+                <Check TValue="bool" @bind-Checked="coes.FECRECH">Fec.Rech</Check>
+                <Check TValue="bool" @bind-Checked="coes.OBS">Observaciones</Check>
+                <Check TValue="bool" @bind-Checked="coes.PRIOR">Prioridad</Check>
+                <Check TValue="bool" @bind-Checked="coes.TS_User">Ruta</Check>
+            </div>
+            <div class="card-footer">
+                <Button Class="btn btn-danger" Style="opacity:1;" Clicked="@(async () => { snackbarColumns.Show(); hidepop2 = !hidepop2; await SaveColumns(coes); })">Aplicar Cambios</Button>
+                <br />
+                <Button Class="btn btn-dark mt-2" Style="opacity:1;width:100%;" Clicked="(() => hidepop2 = !hidepop2)">Cerrar</Button>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+@*modal ver detalle*@
+<Modal @ref="detalles">
+    <ModalBackdrop @onmousedown="(() => { HideModal(detalles); odd = null; })" />
+
+    <ModalContent Centered="true" Size="ModalSize.Large">
+        <ModalHeader>
+            <ModalTitle>Detalle del Remito Nro: @selectednoped.NOPED</ModalTitle>
+            <CloseButton Clicked="(() => { HideModal(detalles); odd = null; })" />
+        </ModalHeader>
+        <ModalBody>
+            <DataGrid TItem="OrderDetailData" Data="odd" Responsive="true" PageSize="100" ShowPageSizes="true" Bordered="true" Striped="true" Narrow="true" Filterable="true" HeaderRowStyling="@(new DataGridRowStyling { Style = "color: grey; font-size: 13px; font-weigth: bold" })" RowStyling="@((a, b) => b.Style = "color: black; font-size: 12px" )" SelectedRowStyling="@( (a, b) => { b.Style = "color: red; font-size: 13px"; b.Color = Color.Warning; } )">
+                <DataGridColumns>
+                    <DataGridColumn TItem="OrderDetailData" Field="@nameof(OrderDetailData.SKU)" Caption="ARTICULO"></DataGridColumn>
+                    <DataGridColumn TItem="OrderDetailData" Field="@nameof(OrderDetailData.DESCR)" Caption="DESCRIPCION"></DataGridColumn>
+                    <DataGridColumn TItem="OrderDetailData" Field="@nameof(OrderDetailData.BLT)" Caption="BULTOS"></DataGridColumn>
+                    <DataGridColumn TItem="OrderDetailData" Field="@nameof(OrderDetailData.UNI)" Caption="UNIDADES"></DataGridColumn>
+                    <DataGridColumn TItem="OrderDetailData" Field="@nameof(OrderDetailData.VOL)" Caption="VOLUMEN"></DataGridColumn>
+                    <DataGridColumn TItem="OrderDetailData" Field="@nameof(OrderDetailData.QTY)" Caption="DISPONIBLE"></DataGridColumn>
+                    @if (!vendedor)
+                    {
+                        <DataGridColumn TItem="OrderDetailData" Field="@nameof(OrderDetailData._qty)" Caption="AJUSTE" Sortable="false" Filterable="false" Displayable="@(selectednoped.C_STOCK=="Sin Stock" ? true : false)">
+                            <DisplayTemplate>
+                                @if (context.QTY == 0)
+                                {
+                                    <TextEdit></TextEdit>
+                                }
+                                else
+                                {
+                                    <TextEdit Disabled="true" @bind-Text="context._qty"></TextEdit>
+                                }
+                            </DisplayTemplate>
+                        </DataGridColumn>
+                    }
+                </DataGridColumns>
+            </DataGrid>
+        </ModalBody>
+        <ModalFooter>
+            <Button Color="Color.Secondary" Clicked="(() => { HideModal(detalles); odd = null; })">Cerrar</Button>
+            @if (selectednoped.C_STOCK == "Sin Stock")
+            {
+                <Button Color="Color.Primary" Clicked="(async () => { await truck(); await SaveAjustes(odd); })">Guardar Cambios</Button>
+            }
+        </ModalFooter>
+    </ModalContent>
+</Modal>
+
+@*modal rango fecha*@
+<Modal @ref="rangofecha">
+    <ModalBackdrop @onmousedown="(() => HideModal(rangofecha))" />
+
+    <ModalContent Centered="true" Size="ModalSize.Default">
+        <ModalHeader>
+            <ModalTitle Class="text-center">Seleccionar rango de fecha a exportar</ModalTitle>
+            <CloseButton Clicked="(() => HideModal(rangofecha))" />
+        </ModalHeader>
+        <ModalBody>
+            Desde:
+            <DateEdit TValue="DateTime" @bind-Date="@desde" Style="margin-bottom:5px;" />
+            Hasta:
+            <DateEdit TValue="DateTime" @bind-Date="@hasta" />
+        </ModalBody>
+        <ModalFooter>
+            <Button Color="Color.Secondary" Clicked="(() => HideModal(rangofecha))">Cerrar</Button>
+            <Button Color="Color.Primary" Clicked="(async () => { await truck(); await ExportarExcelRangoFecha(desde, hasta); })">Descargar</Button>
+        </ModalFooter>
+    </ModalContent>
+</Modal>
+
+@*modal cambiar direccion remito*@
+<Modal @ref="dirRemito">
+    <ModalBackdrop @onmousedown="(() => HideModal(dirRemito))" />
+
+    <ModalContent Centered="true" Size="ModalSize.Default">
+        <ModalHeader>
+            <ModalTitle Class="text-center">Cambiar dirección del remito: @selectednoped.NOPED</ModalTitle>
+            <CloseButton Clicked="(() => HideModal(dirRemito))" />
+        </ModalHeader>
+        <ModalBody>
+            <div class="d-flex">
+                <div class="mr-2 ml-3">
+                    Direccion:
+                </div>
+                <Dropdown>
+                    <DropdownToggle Color="Color.Primary">
+                        @selecteddireccion
+                    </DropdownToggle>
+                    <DropdownMenu>
+                        @foreach (ClienteDireccionData item in oesdirecciones)
+                        {
+                            <DropdownItem Clicked="(() =>  selecteddireccion = item.DIRECCION)">(@item.ENTREGA)   @item.DIRECCION - @item.CIUDAD</DropdownItem>
+                        }
+                    </DropdownMenu>
+                </Dropdown>
+            </div>
+        </ModalBody>
+        <ModalFooter>
+            <Button Color="Color.Secondary" Clicked="(() => HideModal(dirRemito))">Cerrar</Button>
+            <Button Color="Color.Primary" Clicked="(() => SaveDireccion(selectednoped.NOPED,selectednoped.NOCLI,user))">Guardar</Button>
+        </ModalFooter>
+    </ModalContent>
+</Modal>
+
+@*modal bloqueo/liberacion*@
+<Modal @ref="bloqueolib">
+    <ModalBackdrop @onclick="@(() => { HideModal(bloqueolib); resetBloqueoLib(); })" />
+
+    <ModalContent Centered="true" Size="ModalSize.Large">
+        <ModalHeader>
+            <ModalTitle Class="text-center">Bloqueo-Liberacion de Documentos</ModalTitle>
+            <CloseButton Clicked="@(() => { HideModal(bloqueolib); resetBloqueoLib(); })" />
+        </ModalHeader>
+        <ModalBody Class="container">
+            @if (Session.Comercial && Session.Logistico)
+            {
+                <div class="row pb-4">
+                    <div class="col">
+                        Entrega Suspendida por motivos comerciales:
+                    </div>
+                    <div class="col">
+                        <div class="row-2">
+                            <Switch TValue="bool" Checked="espc" CheckedChanged="(()=> { espc = !espc; OnEspcChanged(); })" @bind-Disabled="espc_disabled">@(espc?" - S":" - N")</Switch>
+                        </div>
+                    </div>
+                </div>
+                <div class="row pb-4">
+                    <div class="col">
+                        Entrega Suspendida por motivos logísticos:
+                    </div>
+                    <div class="col">
+                        <div class="row-2">
+                            <Switch TValue="bool" @bind-Checked="@espl" @bind-Disabled="espl_disabled">@(espl?" - S":" - N")</Switch>
+                        </div>
+                    </div>
+                </div>
+
+
+                <div class="row pb-4">
+                    <div class="col">
+                        Prioridad:
+                    </div>
+                    <div class="col">
+                        <Dropdown @bind-Disabled="prior_disabled">
+                            <DropdownToggle Color="Color.Light">
+                                @switch (selectedprioridad)
+                                {
+                                    case "1":@: Maxima
+                                        break;
+                                    case "4": @: Alta
+                                        break;
+                                    case "5": @: Normal
+                                        break;
+                                }
+                            </DropdownToggle>
+                            <DropdownMenu>
+                                <DropdownItem Clicked="@(()=>selectedprioridad="1")">1 - Maxima</DropdownItem>
+                                <DropdownItem Clicked="@(()=>selectedprioridad="4")">4 - Alta</DropdownItem>
+                                <DropdownItem Clicked="@(()=>selectedprioridad="5")">5 - Normal</DropdownItem>
+                            </DropdownMenu>
+                        </Dropdown>
+                    </div>
+                </div>
+                <div class="row pb-4">
+                    <div class="col">
+                        Fecha Diferimento:
+                    </div>
+                    <div class="col">
+                        <DateEdit TValue="DateTime?" @bind-Date="@fechadif" @bind-Disabled="fechadif_disabled" />
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col">
+                        Observaciones:
+                    </div>
+                    <div class="col">
+                        <Field>
+                            <MemoEdit @bind-Text="@observaciones" Placeholder=" . . ." Rows="5" />
+                        </Field>
+                    </div>
+                </div>
+            }
+
+            @if (Session.Comercial && Session.Logistico == false)
+            {
+                <div class="row pb-4">
+                    <div class="col">
+                        Entrega Suspendida por motivos comerciales:
+                    </div>
+                    <div class="col">
+                        <div class="row-2">
+                            <Switch TValue="bool" Checked="espc" CheckedChanged="(()=> { espc = !espc; OnEspcChanged(); })" @bind-Disabled="espc_disabled">@(espc?" - S":" - N")</Switch>
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col">
+                        Observaciones:
+                    </div>
+                    <div class="col">
+                        <Field>
+                            <MemoEdit @bind-Text="@observaciones" Placeholder=" . . ." Rows="5" />
+                        </Field>
+                    </div>
+                </div>
+            }
+
+            @if (Session.Logistico && Session.Comercial == false)
+            {
+                <div class="row pb-4">
+                    <div class="col">
+                        Entrega Suspendida por motivos logísticos:
+                    </div>
+                    <div class="col">
+                        <div class="row-2">
+                            <Switch TValue="bool" @bind-Checked="@espl" @bind-Disabled="espl_disabled">@(espl?" - S":" - N")</Switch>
+                        </div>
+                    </div>
+                </div>
+
+
+                <div class="row pb-4">
+                    <div class="col">
+                        Prioridad:
+                    </div>
+                    <div class="col">
+                        <Dropdown @bind-Disabled="prior_disabled">
+                            <DropdownToggle Color="Color.Light">
+                                @switch (selectedprioridad)
+                                {
+                                    case "1":@: Maxima
+                                        break;
+                                    case "4": @: Alta
+                                        break;
+                                    case "5": @: Normal
+                                        break;
+                                }
+                            </DropdownToggle>
+                            <DropdownMenu>
+                                <DropdownItem Clicked="@(()=>selectedprioridad="1")">1 - Maxima</DropdownItem>
+                                <DropdownItem Clicked="@(()=>selectedprioridad="4")">4 - Alta</DropdownItem>
+                                <DropdownItem Clicked="@(()=>selectedprioridad="5")">5 - Normal</DropdownItem>
+                            </DropdownMenu>
+                        </Dropdown>
+                    </div>
+                </div>
+                <div class="row pb-4">
+                    <div class="col">
+                        Fecha Diferimento:
+                    </div>
+                    <div class="col">
+                        <DateEdit TValue="DateTime?" @bind-Date="@fechadif" @bind-Disabled="fechadif_disabled" />
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col">
+                        Observaciones:
+                    </div>
+                    <div class="col">
+                        <Field>
+                            <MemoEdit @bind-Text="@observaciones" Placeholder=" . . ." Rows="5" />
+                        </Field>
+                    </div>
+                </div>
+            }
+
+        </ModalBody>
+        <ModalFooter>
+            <Button Color="Color.Secondary" Clicked="@(() => { HideModal(bloqueolib); resetBloqueoLib(); })">Cerrar</Button>
+            <Button Color="Color.Primary" Clicked="(async()=> { await truck(); await GuardarBloqueoLib(espc, espl, selectedprioridad, fechadif, observaciones); })">Guardar</Button>
+        </ModalFooter>
+    </ModalContent>
+</Modal>
+
+@*modal count remitos*@
+<Modal @ref=" mcremitos">
+    <ModalBackdrop @onmousedown="(() => { HideModal( mcremitos); })" />
+
+    <ModalContent Centered="true" Size="ModalSize.Large">
+        <ModalHeader>
+            <ModalTitle>Pedidos chequeados</ModalTitle>
+            <CloseButton Clicked="(() => HideModal( mcremitos))" />
+        </ModalHeader>
+        <ModalBody>
+            <DataGrid TItem="OrderExtensionStatic" Data="oeschecked" PageSize="100" Responsive="true" ShowPageSizes="true" Bordered="true" Striped="true" Narrow="true">
+                <DataGridColumns>
+                    <DataGridColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic._chk)" Caption="Chequeado">
+                        <DisplayTemplate>
+
+                            <Check Inline="true" TValue="bool" Checked="context._chk" CheckedChanged="(() => { context._chk = !context._chk; OnCheckedChanged(context); })" />
+
+                        </DisplayTemplate>
+                    </DataGridColumn>
+                    <DataGridColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.NOPED)" Caption="Nro. Pedido"></DataGridColumn>
+                    <DataGridColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.NOFACT)" Caption="Nro. Factura"></DataGridColumn>
+                    <DataGridColumn TItem="OrderExtensionStatic" Field="@nameof(OrderExtensionStatic.CLI)" Caption="Cliente"></DataGridColumn>
+                </DataGridColumns>
+            </DataGrid>
+        </ModalBody>
+        <ModalFooter>
+            <Button Color="Color.Secondary" Clicked="(() => HideModal( mcremitos))">Cerrar</Button>
+        </ModalFooter>
+    </ModalContent>
+</Modal>
+
+@*modal auto asignar*@
+<Modal @ref="autosync">
+    <ModalBackdrop @onmousedown="(() => { HideModal( autosync); })" />
+
+    <ModalContent Centered="true" Size="ModalSize.Default">
+        <ModalHeader>
+            <ModalTitle>Auto asignación de Stock</ModalTitle>
+            <CloseButton Clicked="(() => HideModal( autosync))" />
+        </ModalHeader>
+        <ModalBody>Auto asignacion de stock, puede tardar varios minutos.</ModalBody>
+        <ModalFooter>
+            <Button Color="Color.Secondary" Clicked="(() => HideModal( autosync))">Cerrar</Button>
+            <Button Color="Color.Primary" Clicked="(async ()=> { await truck(); await AutoAsignar(); })">Iniciar Auto-Asignación</Button>
+        </ModalFooter>
+    </ModalContent>
+</Modal>
+
+@*modal tsdocs*@
+<Modal @ref="tsdocs">
+    <ModalBackdrop @onmousedown="(() => { HideModal( tsdocs); })" />
+
+    <ModalContent Centered="true" Size="ModalSize.Default">
+        <ModalHeader>
+            <ModalTitle>TS Docs</ModalTitle>
+            <CloseButton Clicked="(() => HideModal( tsdocs))" />
+        </ModalHeader>
+        <ModalBody>
+            <DataGrid TItem="TSDocs" Data="tsdoc" Responsive="true" ShowPageSizes="true" Bordered="true" Striped="true" Narrow="true">
+                <DataGridColumns>
+                    <DataGridColumn TItem="TSDocs" Field="@nameof(TSDocs.URL)">
+                        <DisplayTemplate>
+                            <Icon Name="IconName.FilePdf" @onclick="@(async () => await JS.InvokeAsync<object>("open", context.URL, "_blank"))"></Icon>
+                        </DisplayTemplate>
+                    </DataGridColumn>
+                    <DataGridColumn TItem="TSDocs" Field="@nameof(TSDocs.RTO)" Caption="Rto"></DataGridColumn>
+                    <DataGridColumn TItem="TSDocs" Field="@nameof(TSDocs.FEC)" Caption="Fecha"></DataGridColumn>
+                    <DataGridColumn TItem="TSDocs" Field="@nameof(TSDocs.LOTE)" Caption="Lote"></DataGridColumn>
+                </DataGridColumns>
+                <EmptyTemplate>
+                    <div class="font-weight-bold m-lg-5">No se encuentran registros</div>
+                </EmptyTemplate>
+            </DataGrid>
+        </ModalBody>
+        <ModalFooter>
+            <Button Color="Color.Secondary" Clicked="(() => HideModal( tsdocs))">Cerrar</Button>
+        </ModalFooter>
+    </ModalContent>
+</Modal>
+
+@*modal visor de eventos*@
+<Modal @ref="visorEventos">
+    <ModalBackdrop @onmousedown="(() => { HideModal( visorEventos); })" />
+
+    <ModalContent Centered="true" Size="ModalSize.Default">
+        <ModalHeader>
+            <ModalTitle>Visor de eventos</ModalTitle>
+            <CloseButton Clicked="(() => HideModal( visorEventos))" />
+        </ModalHeader>
+        <ModalBody>
+            <DataGrid TItem="LogData" Data="ld" Responsive Bordered Striped Narrow PageSize="100">
+                <DataGridColumns>
+                    <DataGridColumn TItem="LogData" Field="@nameof(LogData.Descr)" Caption="Evento"></DataGridColumn>
+                    <DataGridColumn TItem="LogData" Field="@nameof(LogData.TS)" Caption="Fecha"></DataGridColumn>
+                    <DataGridColumn TItem="LogData" Field="@nameof(LogData.TS_User)" Caption="Usuario"></DataGridColumn>
+                </DataGridColumns>
+                <EmptyTemplate>
+                    <div class="font-weight-bold m-lg-5">No se encuentran registros</div>
+                </EmptyTemplate>
+            </DataGrid>
+        </ModalBody>
+        <ModalFooter>
+            <Button Color="Color.Secondary" Clicked="(() => HideModal( visorEventos))">Cerrar</Button>
+        </ModalFooter>
+    </ModalContent>
+</Modal>
+
+@*snackbar actualizacion/insert columnas*@
+<Snackbar @ref="snackbarColumns" Color="SnackbarColor.Success">
+    @if (msjcolumna == "UPDATE")
+    {
+        <SnackbarBody>
+            Se ha actualizado la configuración correctamente
+        </SnackbarBody>
+    }
+    else if (msjcolumna == "INSERT")
+    {
+        <SnackbarBody>
+            Se ha creado la configuración correctamente
+        </SnackbarBody>
+    }
+</Snackbar>
+
+@*snackbar error*@
+<Snackbar @ref="snackbarError" Color="SnackbarColor.Danger" Style="z-index:9999;">
+    <SnackbarBody>
+        @snackerror
+    </SnackbarBody>
+</Snackbar>
+
+@*snackbar success*@
+<Snackbar @ref="snackbarSuccess" Color="SnackbarColor.Success" Style="z-index:9999;">
+    <SnackbarBody>
+        @snacksuccess
+    </SnackbarBody>
+</Snackbar>
+
+
+@code
+{
+    #region instancias
+
+    List<OrderExtensionStatic> oes = new();
+    List<OrderExtensionStatic> oes2 = new();
+    List<OrderExtensionStatic> oesfiltrado = new();
+    List<OrderExtensionStatic> oesrangofecha = new();
+    OrderExtensionStatic selectednoped = new();
+    ColumnasOES coes = new();
+
+    List<OrderDetailData> odd = new();
+    List<TSDocs> tsdoc = new();
+    List<OrderExtensionStatic> oeschecked = new();
+    List<ClienteDireccionData> oesdirecciones = new();
+    List<LogData> ld = new();
+
+    List<string> estados = new();
+    List<string> contado = new();
+    List<string> esperac = new();
+    List<string> esperal = new();
+    List<string> selectedStatus = new();
+    List<Int32> rangoItems = new List<Int32>() { 15, 50, 100 };
+
+    int remitos = 0;
+    int bultos = 0;
+    int unidades = 0;
+    decimal volumen = 0;
+    string[] vol = new string[2];
+    int lineas = 0;
+    int cremitos = 0;
+
+    bool hide { get; set; } = true;
+    bool hidetruck { get; set; } = true;
+    bool hidepop { get; set; } = false;
+    bool hidepop2 { get; set; } = false;
+    bool hidecommands { get; set; } = false;
+    bool clear { get; set; } = true;
+    bool activos { get; set; } = false;
+    bool fRender { get; set; } = false;
+    bool TDoc { get; set; } = true;
+    bool L { get; set; } = true;
+    bool espc { get; set; } = true;
+    bool espl { get; set; } = true;
+    bool espc_disabled { get; set; } = false;
+    bool espl_disabled { get; set; } = false;
+    bool prior_disabled { get; set; } = false;
+    bool fechadif_disabled { get; set; } = false;
+    bool vendedor { get; set; } = true;
+    bool loaded { get; set; } = false;
+
+    string iconname = "";
+    string customFilterValue;
+    string customFilterValueDropdown;
+    string msjcolumna;
+    string selectedprioridad = "5";
+    string selecteddireccion = "";
+    string selecteddirremito = "";
+    string observaciones = "";
+    string user = "";
+    string snackerror = "";
+    string snacksuccess = "";
+    string selectedcontado = "";
+    string selectedespc = "";
+    string selectedespl = "";
+    string rpte = "";
+    string driverended = "";
+    string remitosname = "Remitos ";
+
+    int year = DateTime.Now.Year.ToString();
+    int psize = 20;
+    string psizeval = "";
+
+    Modal detalles;
+    Modal rangofecha;
+    Modal bloqueolib;
+    Modal mcremitos;
+    Modal autosync;
+    Modal dirRemito;
+    Modal visorEventos;
+    Modal tsdocs;
+    Snackbar snackbarColumns;
+    Snackbar snackbarError;
+    Snackbar snackbarSuccess;
+    Snackbar errorBL;
+    Snackbar errorValUser;
+    Snackbar errorBLFecDif;
+    Snackbar reservar;
+    DateTime desde = new DateTime(2019, 1, 1);
+    DateTime hasta = DateTime.Today;
+    DateTime? fechadif;
+    Dropdown dropdown;
+    public Blazorise.Button HiddenClearFilterButton { get; set; }
+    public Blazorise.DataGrid.FilterContext sellervalue { get; set; }
+    bool test = false;
+    #endregion
+
+    //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@//
+
+    #region metodos
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await ValidarUsuario();
+
+            await GetColumns(user);
+
+            await LoadOES(activos, year);
+
+            await JS.InvokeVoidAsync("countup");
+
+            await JS.InvokeVoidAsync("rotate");
+
+            hide = !hide;
+
+            firstRender = false;
+
+            test = true;
+
+            StateHasChanged();
+
+        }
+
+        StateHasChanged();
+    }
+
+    async Task LoadOES(bool activos, int y) //cargo la grilla
+    {
+        oes = await dbaccess.GetOES(activos, y);
+
+        ValidarVendedor();
+
+        oes2 = oes;
+        CountResume(oes);
+
+        if (oes == null)
+        {
+            snackerror = "No se encontraron registros.";
+            snackbarError.Show();
+            await truck();
+            return;
+        }
+
+        if (fRender)
+        {
+            await truck();
+        }
+
+        LoadDropdowns();
+        fRender = true;
+        oeschecked.Clear();
+        cremitos = oeschecked.Count();
+        loaded = true;
+
+        StateHasChanged();
+    }
+
+    async Task ReloadCountResume()
+    {
+        CountResume(oesfiltrado);
+        StateHasChanged();
+        await Task.Delay(1);
+        await JS.InvokeVoidAsync("countup");
+    }
+
+    #region modal
+    private void ShowModal(Modal x)
+    {
+        x.Show();
+    }
+
+    private void HideModal(Modal x)
+    {
+        x.Hide();
+    }
+    #endregion
+
+    #region visibilidad de columnas
+
+    void CheckAll(ColumnasOES coes)
+    {
+        var props = coes.GetType().GetProperties();
+
+        foreach (var prop in props)
+        {
+            if (prop.Name != "Usuario")
+                prop.SetValue(coes, true);
+        }
+    }
+
+    void CheckNone(ColumnasOES coes)
+    {
+        var props = coes.GetType().GetProperties();
+
+        foreach (var prop in props)
+        {
+            if (prop.Name != "Usuario")
+                prop.SetValue(coes, false);
+        }
+    }
+
+    async Task SaveColumns(ColumnasOES coes)
+    {
+        msjcolumna = await dbaccess.SetColumnasOES(coes, user);
+    }
+
+    async Task GetColumns(string user)
+    {
+        if (string.IsNullOrEmpty(user))
+        {
+            user = "Default";
+        }
+        else
+        {
+            coes = await dbaccess.GetColumnasOES(user);
+        }
+    }
+    #endregion
+
+    #region Excel
+    public static DataTable ToDataTable<T>(List<T> items)
+    {
+        DataTable dataTable = new DataTable(typeof(T).Name);
+
+        //Obtengo todas las propiedades
+        PropertyInfo[] Props = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance);
+        foreach (PropertyInfo prop in Props)
+        {
+            //Defino tipos de datos para las columnas
+            var type = (prop.PropertyType.IsGenericType && prop.PropertyType.GetGenericTypeDefinition() == typeof(Nullable<>) ? Nullable.GetUnderlyingType(prop.PropertyType) : prop.PropertyType);
+            //Seteo los nombres de las columnas con las propiedades
+            dataTable.Columns.Add(prop.Name, type);
+        }
+        foreach (T item in items)
+        {
+            var values = new object[Props.Length];
+            for (int i = 0; i < Props.Length; i++)
+            {
+                //Meto los values en las filas
+                values[i] = Props[i].GetValue(item, null);
+            }
+            dataTable.Rows.Add(values);
+        }
+
+        return dataTable;
+    }
+
+    DataTable FiltrarDataTable(DataTable dt)
+    {
+
+        foreach (var prop in coes.GetType().GetProperties())
+        {
+            string n = prop.Name;
+            if (n == "Usuario" || n == "NOPED" || n == "NOFACT" || n == "C_STOCK" || n == "EST" || n == "RPTE") continue;
+            bool value = (bool)prop.GetValue(coes, null);
+
+            if (value == false)
+            {
+                dt.Columns.Remove(n);
+            }
+        }
+
+        dt.Columns.Remove("Id");
+        dt.Columns.Remove("NOCLI");
+        dt.Columns.Remove("TS");
+        dt.Columns.Remove("C_LATITUD");
+        dt.Columns.Remove("C_LONGITUD");
+        dt.Columns.Remove("C_RECLAMO");
+        dt.Columns.Remove("FECCERTI");
+        dt.Columns.Remove("APPHS");
+        dt.Columns.Remove("_chk");
+        dt.Columns.Remove("C_FECCOM");
+        dt.Columns.Remove("C_USRCOM");
+        dt.Columns.Remove("C_FECLOG");
+        dt.Columns.Remove("C_USRLOG");
+        dt.Columns.Remove("C_DIG_LOTE");
+        dt.Columns.Remove("CR");
+
+        if (dt.Columns.Contains("TDOC")) dt.Columns["TDOC"].ColumnName = "Tipo Documento";
+        if (dt.Columns.Contains("LETRA")) dt.Columns["LETRA"].ColumnName = "Letra";
+        if (dt.Columns.Contains("NOPED")) dt.Columns["NOPED"].ColumnName = "Remito";
+        if (dt.Columns.Contains("NOFACT")) dt.Columns["NOFACT"].ColumnName = "Factura";
+        if (dt.Columns.Contains("DEST")) dt.Columns["DEST"].ColumnName = "Contado";
+        if (dt.Columns.Contains("ESPC")) dt.Columns["ESPC"].ColumnName = "Bloqueo Comercial";
+        if (dt.Columns.Contains("ESPL")) dt.Columns["ESPL"].ColumnName = "Bloqueo Logistico";
+        if (dt.Columns.Contains("EST")) dt.Columns["EST"].ColumnName = "Estado";
+        if (dt.Columns.Contains("C_STOCK")) dt.Columns["C_STOCK"].ColumnName = "Stock";
+        if (dt.Columns.Contains("BLT")) dt.Columns["BLT"].ColumnName = "Bultos";
+        if (dt.Columns.Contains("UNI")) dt.Columns["UNI"].ColumnName = "Unidades";
+        if (dt.Columns.Contains("NOOC")) dt.Columns["NOOC"].ColumnName = "OC";
+        if (dt.Columns.Contains("PRIOR")) dt.Columns["PRIOR"].ColumnName = "Prioridad";
+        if (dt.Columns.Contains("VOL")) dt.Columns["VOL"].ColumnName = "Volumen";
+        if (dt.Columns.Contains("CLI")) dt.Columns["CLI"].ColumnName = "Cliente";
+        if (dt.Columns.Contains("DIRE")) dt.Columns["DIRE"].ColumnName = "Direccion";
+        if (dt.Columns.Contains("CIU")) dt.Columns["CIU"].ColumnName = "Ciudad";
+        if (dt.Columns.Contains("LOC")) dt.Columns["LOC"].ColumnName = "Localidad";
+        if (dt.Columns.Contains("CP")) dt.Columns["CP"].ColumnName = "CP";
+        if (dt.Columns.Contains("FECDOC")) dt.Columns["FECDOC"].ColumnName = "Fecha Doc";
+        if (dt.Columns.Contains("FECING")) dt.Columns["FECING"].ColumnName = "Fecha Ingreso";
+        if (dt.Columns.Contains("FECDISP")) dt.Columns["FECDISP"].ColumnName = "Fecha Disponible";
+        if (dt.Columns.Contains("FECDIFER")) dt.Columns["FECDIFER"].ColumnName = "Fecha Diferimento";
+        if (dt.Columns.Contains("FECLIBCOM")) dt.Columns["FECLIBCOM"].ColumnName = "Fecha Liberacion Comercial";
+        if (dt.Columns.Contains("FECLIBLOG")) dt.Columns["FECLIBLOG"].ColumnName = "Fecha Liberacion Logistica";
+        if (dt.Columns.Contains("FECINICOMP")) dt.Columns["FECINICOMP"].ColumnName = "Fecha Inicio Compra";
+        if (dt.Columns.Contains("FECPREVENT")) dt.Columns["FECPREVENT"].ColumnName = "Fecha Prevista Entrega";
+        if (dt.Columns.Contains("FECCONFMOB")) dt.Columns["FECCONFMOB"].ColumnName = "Fecha Confirmacion Real";
+        if (dt.Columns.Contains("FECDIFERMOB")) dt.Columns["FECDIFERMOB"].ColumnName = "Fecha Inicio Viaje";
+        if (dt.Columns.Contains("FECCONFENT")) dt.Columns["FECCONFENT"].ColumnName = "Fecha Entrega";
+        if (dt.Columns.Contains("FECENT")) dt.Columns["FECENT"].ColumnName = "Fecha Digitalizacion Remito";
+        if (dt.Columns.Contains("FECRECH")) dt.Columns["FECRECH"].ColumnName = "Fecha Rechazo";
+        if (dt.Columns.Contains("OBS")) dt.Columns["OBS"].ColumnName = "Observaciones";
+        if (dt.Columns.Contains("RPTE")) dt.Columns["RPTE"].ColumnName = "Representante";
+        if (dt.Columns.Contains("TS_User")) dt.Columns["TS_User"].ColumnName = "Ruta";
+        if (dt.Columns.Contains("CR_User")) dt.Columns["CR_User"].ColumnName = "Lineas Remito";
+        if (dt.Columns.Contains("C_Valor")) dt.Columns["C_Valor"].ColumnName = "Valor Factura";
+        if (dt.Columns.Contains("C_Rendido")) dt.Columns["C_Rendido"].ColumnName = "Remito Rendido";
+
+        return dt;
+    }
+
+    async Task ExportarExcel()
+    {
+        ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
+        using (var package = new ExcelPackage())
+        {
+            var worksheet = package.Workbook.Worksheets.Add("Pedidos");
+
+            DataTable dt = FiltrarDataTable(ToDataTable(oesfiltrado));
+
+            var tableBody = worksheet.Cells["A1:AR1"].LoadFromDataTable(dt, true);
+
+            worksheet.Cells["A1"].LoadFromDataTable(dt, true);
+
+            ExcelRange range = worksheet.Cells["A1"];
+
+            //setea autofiltros
+            range.AutoFilter = true;
+            //setea color a cabeceras
+            range.Style.Fill.PatternType = ExcelFillStyle.Solid;
+            range.Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.DarkGray);
+            //setea color a fuente
+            range.Style.Font.Color.SetColor(System.Drawing.Color.White);
+            //auto width cells
+            worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns();
+
+
+            //var header = worksheet.Cells["A1:AQ1"];
+
+            //tableBody.AutoFilter = true;
+            //tableBody.Style.Fill.PatternType = ExcelFillStyle.Solid;
+            //tableBody.Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.WhiteSmoke);
+            //header.Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.DarkGray);
+            //header.Style.Font.Color.SetColor(System.Drawing.Color.Black);
+            //worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns();
+            //worksheet.Cells[worksheet.Dimension.Address].Style.Border.Top.Style = ExcelBorderStyle.Thin;
+            //worksheet.Cells[worksheet.Dimension.Address].Style.Border.Left.Style = ExcelBorderStyle.Thin;
+            //worksheet.Cells[worksheet.Dimension.Address].Style.Border.Right.Style = ExcelBorderStyle.Thin;
+            //worksheet.Cells[worksheet.Dimension.Address].Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
+
+            //string downloadsPath = new KnownFolder(KnownFolderType.Downloads).Path;
+
+            await JS.GuardarComo(DateTime.Today.ToString("yyyyMMdd") + "_ResumenCoteminas.xlsx", package.GetAsByteArray());
+
+        }
+        await truck();
+    }
+    async Task ExportarExcelRangoFecha(DateTime desde, DateTime hasta)
+    {
+        ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
+        using (var package = new ExcelPackage())
+        {
+            var worksheet = package.Workbook.Worksheets.Add("Stock Articulos");
+            oesrangofecha = await dbaccess.GetRangoFechaOES(desde, hasta);
+            var tableBody = worksheet.Cells["A1:AR1"].LoadFromCollection(from f in oesrangofecha select new { Tipo_Documento = f.TDOC, Letra = f.LETRA, Remito = f.NOPED, Factura = f.NOFACT, Contado = f.DEST, Bloqueo_Comercial = f.ESPC, Bloqueo_Logistico = f.ESPL, Estado = f.EST, Stock = f.C_STOCK, Bultos = f.BLT, Unidades = f.UNI, OC = f.NOOC, Prioridad = f.PRIOR, Volumen = f.VOL, Cliente = f.CLI, Direccion = f.DIRE, Ciudad = f.CIU, Localidad = f.LOC, CP = f.CP, Fecha_Doc = f.FECDOC, Fecha_Ingreso = f.FECING, Fecha_Disponible = f.FECDISP, Fecha_Diferimento = f.FECDIFER, Fecha_Liberacion_Comercial = f.FECLIBCOM, Fecha_Liberacion_Logistica = f.FECLIBLOG, Fecha_Inicio_Compra = f.FECINICOMP, Fecha_Prevista_Entrega = f.FECPREVENT, Fecha_Confirmacion_Real = f.FECCONFMOB, Fecha_Inicio_Viaje = f.FECDIFERMOB, Fecha_Entrega = f.FECCONFENT, Fecha_Digitalizacion_Remito = f.FECENT, Fecha_Rechazo = f.FECRECH, Observaciones = f.OBS, Representante = f.RPTE, Ruta = f.TS_User, Lineas_Remito = f.CR_User, Valor_Factura = f.C_Valor, Remito_Rendido = f.C_Rendido, Fec_Lib_Comercial = f.C_FECCOM, Usuario_Lib_Comercial = f.C_USRCOM, Fec_Lib_Logistica = f.C_FECLOG, Usuario_Lib_Logistica = f.C_USRLOG, Lote = f.C_DIG_LOTE }, true);
+
+            var header = worksheet.Cells["A1:AQ1"];
+
+            tableBody.AutoFilter = true;
+            tableBody.Style.Fill.PatternType = ExcelFillStyle.Solid;
+            tableBody.Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.WhiteSmoke);
+            header.Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.DarkGray);
+            header.Style.Font.Color.SetColor(System.Drawing.Color.White);
+            worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns();
+            worksheet.Cells[worksheet.Dimension.Address].Style.Border.Top.Style = ExcelBorderStyle.Thin;
+            worksheet.Cells[worksheet.Dimension.Address].Style.Border.Left.Style = ExcelBorderStyle.Thin;
+            worksheet.Cells[worksheet.Dimension.Address].Style.Border.Right.Style = ExcelBorderStyle.Thin;
+            worksheet.Cells[worksheet.Dimension.Address].Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
+            //string downloadsPath = new KnownFolder(KnownFolderType.Downloads).Path;
+
+            await JS.GuardarComo(DateTime.Today.ToString("yyyyMMdd") + "_RangoFechasCoteminas.xlsx", package.GetAsByteArray());
+
+        }
+        await truck();
+    }
+    async Task ExportarExcelStockHabilitado()
+    {
+        ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
+        using (var package = new ExcelPackage())
+        {
+            var worksheet = package.Workbook.Worksheets.Add("Habilitados");
+            var dt = await dbaccess.GetStockHabilitado();
+            var tableBody = worksheet.Cells["A1:AR1"].LoadFromDataTable(dt, true);
+
+            var header = worksheet.Cells["A1:I1"];
+
+            tableBody.AutoFilter = true;
+            tableBody.Style.Fill.PatternType = ExcelFillStyle.Solid;
+            tableBody.Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.WhiteSmoke);
+            header.Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.DarkGray);
+            header.Style.Font.Color.SetColor(System.Drawing.Color.White);
+            worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns();
+            worksheet.Cells[worksheet.Dimension.Address].Style.Border.Top.Style = ExcelBorderStyle.Thin;
+            worksheet.Cells[worksheet.Dimension.Address].Style.Border.Left.Style = ExcelBorderStyle.Thin;
+            worksheet.Cells[worksheet.Dimension.Address].Style.Border.Right.Style = ExcelBorderStyle.Thin;
+            worksheet.Cells[worksheet.Dimension.Address].Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
+            //string downloadsPath = new KnownFolder(KnownFolderType.Downloads).Path;
+
+            await JS.GuardarComo(DateTime.Today.ToString("yyyyMMdd") + "_StockHabilitadoCoteminas.xlsx", package.GetAsByteArray());
+
+        }
+        await truck();
+    }
+
+    #endregion
+
+    #region Grilla filtrada
+
+    private Action<IEnumerable<OrderExtensionStatic>> Filtrado()
+    {
+        Action<IEnumerable<OrderExtensionStatic>> accion = filtrar; //aca no se que pasa
+
+        return accion;
+    }
+
+    private void filtrar(IEnumerable<OrderExtensionStatic> o)
+    {
+        oesfiltrado = o.ToList();
+    }
+
+    #endregion
+
+    #region Funcionalidades
+    async Task FiltrarEstadosOES()
+    {
+        List<OrderExtensionStatic> x = new List<OrderExtensionStatic>();
+
+        if (selectedStatus.Any())
+        {
+            foreach (var estado in selectedStatus)
+            {
+                foreach (var item in oes2)
+                {
+                    if (estado == item.EST)
+                    {
+                        x.Add(item);
+                    }
+                }
+            }
+            oes = x;
+        }
+        else
+        {
+            await LoadOES(activos, year);
+            await truck();
+        }
+
+    }
+    async Task SaveDireccion(string order, string storer, string user)
+    {
+        try
+        {
+            await dbaccess.OrderExtensionUpdateDireccion(order, storer, user);
+        }
+        catch (Exception ex)
+        {
+            snackerror = "Ha ocurrido un error al actualizar la dirección.";
+            snackbarError.Show();
+        }
+    }
+    async Task FillDirecciones(string noped)
+    {
+        oesdirecciones = await dbaccess.GetDirecciones(noped);
+
+    }
+
+    bool OnCustomFilter(OrderExtensionStatic oes) //Filtro general
+    {
+        if (string.IsNullOrEmpty(customFilterValue))
+            return true;
+
+        return
+            oes.NOPED?.Contains(customFilterValue, StringComparison.OrdinalIgnoreCase) == true
+            || oes.CLI?.Contains(customFilterValue, StringComparison.OrdinalIgnoreCase) == true
+            || oes.NOFACT?.Contains(customFilterValue, StringComparison.OrdinalIgnoreCase) == true
+            || oes.EST?.Contains(customFilterValue, StringComparison.OrdinalIgnoreCase) == true
+            || oes.DIRE?.Contains(customFilterValue, StringComparison.OrdinalIgnoreCase) == true
+            || oes.FECDOC?.Contains(customFilterValue, StringComparison.OrdinalIgnoreCase) == true
+            || oes.FECING?.Contains(customFilterValue, StringComparison.OrdinalIgnoreCase) == true
+            || oes.RPTE?.Contains(customFilterValue, StringComparison.OrdinalIgnoreCase) == true
+            || oes.TDOC?.Contains(customFilterValue, StringComparison.OrdinalIgnoreCase) == true;
+    }
+
+    void CountResume(List<OrderExtensionStatic> lst) //cargo las cards sobre la grilla
+    {
+        if (lst == null)
+        {
+            remitos = 0;
+            bultos = 0;
+            unidades = 0;
+            volumen = 0.0m;
+            vol = volumen.ToString().Split(",");
+            lineas = 0;
+            cremitos = 0;
+
+            StateHasChanged();
+
+        }
+        else
+        {
+            remitos = lst.Count();
+            bultos = (int)lst.Sum(x => x.BLT);
+            unidades = (int)lst.Sum(x => x.UNI);
+            volumen = (decimal)lst.Sum(x => x.VOL);
+            vol = volumen.ToString("0.##").Split(",");
+            lineas = (int)lst.FindAll(y => y.CR_User != null).Sum(x => int.Parse(x.CR_User));
+
+            StateHasChanged();
+        }
+    }
+
+    void OnCheckedChanged(OrderExtensionStatic oesc)
+    {
+        if (oeschecked.Contains(oesc))
+        {
+            oeschecked.Remove(oesc);
+        }
+        else
+        {
+            oeschecked.Add(oesc);
+        }
+        cremitos = oeschecked.Count();
+    }
+
+    async Task GuardarBloqueoLib(bool espc, bool espl, string prio, DateTime? fec, string obs)
+    {
+        foreach (OrderExtensionStatic item in oeschecked)
+        {
+            if ((fec <= Convert.ToDateTime(item.FECLIBCOM)) || (fec <= Convert.ToDateTime(item.FECLIBLOG)))
+            {
+                snackerror = "No se puede colocar una fecha de diferimento menor o igual a la fecha de liberación comercial / logística.";
+                snackbarError.Show();
+                await truck();
+                return;
+            }
+
+
+            item.ESPC = (espc ? "S" : "N");
+            item.ESPL = ((espc && !espc_disabled) || espl || !(item.NOEST == "R") ? "S" : "N");
+            item.OBS = obs;
+            item.PRIOR = prio;
+
+            item.CR = DateTime.Now;
+            item.CR_User = user;
+            item.TS = DateTime.Now;
+            item.TS_User = user;
+
+            if (Session.Comercial)
+            {
+                if (item.ESPC == "S")
+                {
+                    await dbaccess.LiberarComercial(item.NOPED, item.ESPC, user);
+                    await dbaccess.LiberarLogistica(item.NOPED, item.ESPL, user);
+                }
+                else
+                {
+                    await dbaccess.LiberarComercial(item.NOPED, item.ESPC, user);
+                }
+            }
+
+            if (Session.Logistico)
+            {
+                await dbaccess.LiberarLogistica(item.NOPED, item.ESPL, user);
+            }
+
+            item.FECDIFER = fec.ToString();
+
+            if (item.ESPC == "N") //no espera mas.. fue liberada
+                item.FECLIBCOM = DateTime.Now.ToString("dd/MM/yyyy hh:mm");
+
+            if (item.ESPL == "N")
+                item.FECLIBLOG = DateTime.Now.ToString("dd/MM/yyyy hh:mm");
+
+            if (prior_disabled) item.PRIOR = "";
+
+            try
+            {
+                OrderExtensionStatic aux = await dbaccess.SaveOES(item);
+                for (int i = 0; i < oes.Count(); i++)
+                {
+                    if (oes[i].NOPED == aux.NOPED)
+                    {
+                        oes[i].ESPC = aux.ESPC;
+                        oes[i].ESPL = aux.ESPL;
+                        break;
+                    }
+                }
+
+                snacksuccess = "Se ha actualizado el registro.";
+                snackbarSuccess.Show();
+            }
+            catch (Exception ex)
+            {
+                snackerror = ex.ToString();
+                snackbarError.Show();
+                throw;
+            }
+
+
+        }
+        HideModal(bloqueolib);
+        await truck();
+    }
+    void resetBloqueoLib()
+    {
+        espc = false;
+        espl = false;
+        espc_disabled = false;
+        espl_disabled = false;
+        selectedprioridad = "1";
+        fechadif = null;
+        observaciones = "";
+    }
+    void LoadDropdowns()
+    {
+        estados = oes.Select(x => x.EST).Distinct().OrderBy(x => x).ToList();
+        contado = oes.Select(x => x.DEST).Distinct().OrderBy(x => x).ToList();
+        esperac = oes.Select(x => x.ESPC).Distinct().OrderBy(x => x).ToList();
+        esperal = oes.Select(x => x.ESPL).Distinct().OrderBy(x => x).ToList();
+    }
+
+    private Task Clear() //Limpar filtros
+    {
+        selectedcontado = "*";
+        selectedespc = "*";
+        selectedespl = "*";
+        selectedStatus.Clear();
+        FiltrarEstadosOES();
+        return HiddenClearFilterButton.Clicked.InvokeAsync();
+    }
+
+    void ShowMenu()
+    {
+        dropdown.Toggle();
+    }
+
+    async Task LoadODD() //datos del comando 'ver detalle'
+    {
+        odd = await dbaccess.GetODD(selectednoped.NOPED.ToString());
+    }
+
+    async Task truck()
+    {
+        hidetruck = !hidetruck;
+        StateHasChanged();
+        await Task.Delay(1);
+    }
+    protected Func<OrderExtensionStatic, string> BackgroundColor = (OrderExtensionStatic w) =>
+    {
+        if (w.EST == "EN VIAJE")
+        {
+            w.C_STOCK = "";
+            return "width:8%;";
+        }
+        else
+        {
+            if (w.C_STOCK == "Con Stock")
+            {
+                return "background-color:#d1e6d2;width:8%;";
+            }
+            else
+            {
+                return "background-color:#e6d1d1;width:8%;";
+            }
+        }
+
+    };
+    async Task AutoAsignar()
+    {
+        dbaccess.AutoSync();
+        await truck();
+    }
+
+    void ValidarVendedor
+        ()
+    {
+        if (oes != null)
+        {
+
+            foreach (oAtributo item in Session.Atributos)
+            {
+                if (item.Atributo == "Representante")
+                {
+                    rpte = item.Valor;
+                }
+            }
+
+            if (rpte == "TODOS" || rpte == null)
+            {
+                vendedor = false;
+            }
+            else
+            {
+                vendedor = true;
+                oes = oes.Where(x => x.RPTE == rpte).ToList();
+                if (oes.Count() == 0)
+                    oes = null;
+            }
+        }
+    }
+
+    void MostrarBloqlib()
+    {
+        if (oeschecked.Count() != 0)
+        {
+            if (oeschecked.Count() == 1)
+            {
+                foreach (OrderExtensionStatic item in oeschecked)
+                {
+                    observaciones = item.OBS;
+
+                    if (item.ESPC == "S")
+                    {
+                        espc = true;
+                    }
+                    else
+                    {
+                        espc = false;
+                    }
+
+                    if (item.ESPL == "S")
+                    {
+                        espl = true;
+                    }
+                    else
+                    {
+                        espl = false;
+                    }
+
+                    if (espc && espl)
+                    {
+                        espl_disabled = true;
+                    }
+                    else
+                    {
+                        espl_disabled = false;
+                    }
+                }
+
+                if (Session.Logistico)
+                {
+                    if (espc && espl)
+                    {
+                        snackerror = "Advertencia: No pueden hacerse liberaciones de ordenes con Bloqueo Comercial";
+                        snackbarError.Show();
+                    }
+                }
+            }
+            else
+            {
+                foreach (OrderExtensionStatic item in oeschecked)
+                {
+
+                    if (item.ESPC == "S")
+                    {
+                        espc = true;
+                    }
+                    else
+                    {
+                        espc = false;
+                    }
+
+                    if (item.ESPL == "S")
+                    {
+                        espl = true;
+                    }
+                    else
+                    {
+                        espl = false;
+                    }
+
+                    if (espc && espl)
+                    {
+                        espl_disabled = true;
+                    }
+
+                }
+
+                if (Session.Comercial)
+                {
+                    espc = true;
+                }
+
+                if (Session.Logistico)
+                {
+                    espl = true;
+                }
+
+                if (Session.Logistico)
+                {
+                    if (espc && espl)
+                    {
+                        snackerror = "Advertencia: No pueden hacerse liberaciones de ordenes con Bloqueo Comercial";
+                        snackbarError.Show();
+                    }
+                }
+
+            }
+
+
+            selectedprioridad = "5";
+            ShowModal(bloqueolib);
+        }
+        else
+        {
+            snackerror = "Se deben seleccionar pedidos para esta acción.";
+            snackbarError.Show();
+        }
+    }
+
+    void OnEspcChanged() //agregar
+    {
+        if (espc)
+        {
+            espl = true;
+            espl_disabled = true;
+        }
+        else
+        {
+            espl_disabled = false;
+        }
+    }
+
+    async Task SaveAjustes(List<OrderDetailData> odd)
+    {
+        foreach (OrderDetailData item in odd)
+        {
+            //?
+        }
+
+        StateHasChanged();
+        await truck();
+    }
+
+    async Task oesReservar(string order, string user)
+    {
+        ScalarData result = await dbaccess.OrderExtensionReservar(order, user);
+
+        await truck();
+        if (result.DESCR == "ERROR")
+        {
+            snackerror = "No hay stock suficiente para Reservar el Pedido.";
+            snackbarError.Show();
+        }
+        else
+        {
+            foreach (OrderExtensionStatic item in oesfiltrado)
+            {
+                if (order == item.NOPED)
+                    item.C_STOCK = "Con Stock";
+            }
+            StateHasChanged();
+            snacksuccess = "Se ha reservado el Pedido.";
+            snackbarSuccess.Show();
+        }
+    }
+
+    async Task oesCancelarReserva(string order, string user)
+    {
+        await dbaccess.OrderExtensionLiberar(order, user);
+        foreach (OrderExtensionStatic item in oesfiltrado)
+        {
+            if (order == item.NOPED)
+                item.C_STOCK = "Sin Stock";
+        }
+        StateHasChanged();
+        await truck();
+
+        snacksuccess = "Se ha liberado el Pedido.";
+        snackbarSuccess.Show();
+    }
+
+    async Task GetTSDocs(string order)
+    {
+        tsdoc = await dbaccess.OrderExtensionGetPdfFromTsDocs(order);
+    }
+
+    async Task Tutorial()
+    {
+        hidecommands = true;
+        await JS.InvokeVoidAsync("runDriver");
+    }
+
+    void CheckAllRemitos(List<OrderExtensionStatic> oes)
+    {
+        foreach (OrderExtensionStatic order in oes)
+        {
+            foreach (OrderExtensionStatic filtrado in oesfiltrado)
+            {
+                if (order.NOPED == filtrado.NOPED)
+                {
+                    order._chk = !order._chk;
+                    if (oeschecked.Contains(order))
+                    {
+                        oeschecked.Remove(order);
+                    }
+                    else
+                    {
+                        oeschecked.Add(order);
+                    }
+                }
+            }
+        }
+        cremitos = oeschecked.Count();
+    }
+
+    void ChangePageSize(string size)
+    {
+        if (!string.IsNullOrEmpty(size))
+        {
+            try
+            {
+                int x = Convert.ToInt32(size);
+                if (x > 0 && x <= 100)
+                {
+                    psize = x;
+                }
+                else
+                {
+                    snackerror = "La cantidad debe ser entre 1 y 100";
+                    snackbarError.Show();
+                }
+            }
+            catch (Exception)
+            {
+                snackerror = "Solo numeros entre 1 y 100";
+                snackbarError.Show();
+            }
+
+        }
+    }
+
+    public void Enter(KeyboardEventArgs e)
+    {
+        if (e.Code == "Enter" || e.Code == "NumpadEnter")
+        {
+            ChangePageSize(psizeval);
+        }
+    }
+
+    #endregion
+
+    #region COOKIES
+    async Task EscribirCookie(string Nombre, string Valor, int MinutosExpiracion)
+    {
+        await JS.InvokeAsync<string>("blazorExtensions.CrearCookie", Nombre, Valor, MinutosExpiracion);
+    }
+
+    async Task BorrarCookie(string Nombre)
+    {
+        await JS.InvokeAsync<string>("blazorExtensions.BorrarCookie", Nombre);
+    }
+
+
+    async Task<string> LeerCookie(string Nombre)
+    {
+
+        string cookie = await JS.InvokeAsync<string>("blazorExtensions.LeerCookie", Nombre);
+
+        if (string.IsNullOrEmpty(cookie))
+        {
+            return "";
+        }
+        else
+        {
+            return cookie;
+        }
+
+    }
+    #endregion
+
+    async Task ValidarUsuario()
+    {
+        string permisoAcceso = await oConfig.ObtenerVariable("PermisoAcceso");
+        string permisoComercial = await oConfig.ObtenerVariable("PermisoComercial");
+        string permisoLogistico = await oConfig.ObtenerVariable("PermisoLogistico");
+        string idApp = await oConfig.ObtenerVariable("IdApp");
+        string urlPortal = await oConfig.ObtenerVariable("urlPortal");
+
+        int sessionTimeout = Convert.ToInt32(await oConfig.ObtenerVariable("sessiontimeout"));
+
+        try
+        {
+            oPeticion peticion = new oPeticion();
+
+            string token = "";
+
+            var uri = navManager.ToAbsoluteUri(navManager.Uri);
+            if (QueryHelpers.ParseQuery(uri.Query).TryGetValue("token", out var parametro))
+            {
+                token = parametro;
+            }
+
+            if (!string.IsNullOrEmpty(token))
+            {
+                peticion.Token = token;
+                bool TokenValido = await SSO.ValidarToken(peticion);
+
+                if (TokenValido == true)
+                {
+                    await EscribirCookie("token", token, sessionTimeout);
+                }
+                else
+                {
+                    await BorrarCookie("token");
+                }
+            }
+
+            token = await LeerCookie("token");
+
+            if (!string.IsNullOrEmpty(token))
+            {
+                peticion.Token = token;
+
+                user = await LeerCookie("cuenta");
+
+                if (string.IsNullOrEmpty(user))
+                {
+                    peticion = await SSO.ObtenerCuentaPorToken(peticion);
+
+                    if (string.IsNullOrEmpty(peticion.Cuenta))
+                    {
+                        Session.Error = "No se encontró la cuenta asociada al token.";
+                        navManager.NavigateTo("Error");
+                        return;
+                    }
+
+                    await EscribirCookie("cuenta", peticion.Cuenta, sessionTimeout);
+                }
+                else
+                {
+                    peticion.Cuenta = user;
+                }
+            }
+            else
+            {
+                string urlportal = urlPortal + "login.aspx?idapp=" + idApp;
+                navManager.NavigateTo(urlportal);
+                return;
+            }
+
+            // ---------------- PERMISOS ----------------
+
+            if (Session.Permisos == null)
+            {
+                peticion.IdApp = idApp;
+
+                Session.Permisos = await SSO.ObtenerPermisos(peticion);
+            }
+
+            if (SSO.ValidarPermiso(Session.Permisos, permisoAcceso) == false)
+            {
+                Session.Error = "No tiene permisos para acceder a este sitio.";
+                navManager.NavigateTo("Error");
+                return;
+            }
+
+            Session.Comercial = SSO.ValidarPermiso(Session.Permisos, permisoComercial);
+            Session.Logistico = SSO.ValidarPermiso(Session.Permisos, permisoLogistico);
+
+            if (Session.Atributos == null)
+            {
+                Session.Atributos = await SSO.ObtenerAtributos(peticion);
+            }
+
+            ValidarVendedor();
+
+            hidetruck = true;
+
+            StateHasChanged();
+        }
+        catch (Exception)
+        {
+        }
+    }
+
+    #endregion
+}

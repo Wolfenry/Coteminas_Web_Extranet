@@ -1,0 +1,29 @@
+﻿
+.cargastat {
+    filter: blur(0.5rem);
+    animation-name: fadein;
+    animation-duration: 1s;
+    animation-timing-function: ease-in-out;
+    animation-fill-mode: forwards;
+    pointer-events: none;
+}
+
+    .cargastat.ok {
+        animation-name: blurring;
+        animation-duration: 1s;
+        animation-timing-function: ease-in-out;
+        animation-fill-mode: forwards;
+        pointer-events: auto;
+    }
+
+
+@keyframes blurring {
+    0% {
+        filter: blur(0.5rem);
+    }
+
+    100% {
+        filter: blur(0);
+    }
+}
+
